@@ -1,0 +1,29 @@
+package main
+
+import "time"
+
+const (
+	timeColumnWidth      = 8
+	dayColumnWidth       = 30
+	screenPaddingX       = 2
+	screenPaddingY       = 1
+	dialogCols           = 60
+	dialogRows           = 15
+	dialogPaddingX       = 5
+	dialogPaddingY       = 1
+	dialogMinuteStep     = 15
+	minAllDayBufferRows  = 2
+	slotDuration         = 30 * time.Minute
+	slotsPerDay          = int((24 * time.Hour) / slotDuration)
+	defaultWindowFrom    = 16
+	defaultWindowTo      = 40
+	currentTimeTickEvery = time.Minute
+	calendarRefreshEvery = 5 * time.Second
+	recurringMarker      = "⟳"
+	recurringMarkerPad   = 1
+	recurringMarkerScale = 75
+	eventAccent          = "┃ "
+	shortEventAccent     = "│ "
+	watchStartRetries    = 6
+	watchRetryDelay      = 10 * time.Millisecond
+)
