@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"errors"
-	ical "github.com/BRO3886/go-eventkit/calendar"
-	"github.com/charmbracelet/bubbles/cursor"
-	"github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"strings"
 	"time"
+
+	ical "github.com/BRO3886/go-eventkit/calendar"
+	"github.com/charmbracelet/bubbles/cursor"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type loadCalendarMsg struct {
@@ -254,7 +255,7 @@ func startCalendarWatchCmd() tea.Cmd {
 func openCalendarWatch(start func(context.Context) (<-chan struct{}, error), sleep func(time.Duration)) (<-chan struct{}, context.CancelFunc, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	for attempt := 0; attempt < watchStartRetries; attempt++ {
+	for attempt := range watchStartRetries {
 		changes, err := start(ctx)
 		if err == nil {
 			return changes, cancel, nil
