@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"time"
 )
@@ -43,23 +42,21 @@ type model struct {
 	height            int
 	viewDayOffset     int
 	timedScrollOffset int
-	pinnedSlotWindow  calendarSlotWindow
+	focusPending      bool
 	watchChanges      <-chan struct{}
 	watchCancel       context.CancelFunc
-	activeCalendarID  string
-	statusMessage     string
 	showCreateDialog  bool
 	createDialog      createEventDialog
 }
 
 func initialModel() model {
-	return model{loading: true}
+	return model{loading: true, focusPending: true}
 }
 
 func (m model) Init() tea.Cmd {
 	now := time.Now()
 	viewDay := beginningOfDay(now).AddDate(0, 0, m.viewDayOffset)
-	return tea.Batch(loadCalendarCmd(viewDay, now, m.activeCalendarID), currentTimeTickCmd(now), calendarRefreshTickCmdFunc(), startCalendarWatchCmd())
+	return tea.Batch(loadCalendarCmd(viewDay, now), currentTimeTickCmd(now), calendarRefreshTickCmdFunc(), startCalendarWatchCmd())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -82,18 +79,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "r":
 			m.viewDayOffset = 0
-			m.timedScrollOffset = 0
-			m.pinnedSlotWindow = calendarSlotWindow{}
+			m.focusPending = true
 			now := m.referenceTime()
-			return m, loadCalendarCmd(m.currentViewDay(), now, m.activeCalendarID)
+			return m, loadCalendarCmd(m.currentViewDay(), now)
 		case "h":
-			m.pinCurrentSlotWindow()
 			m.viewDayOffset--
-			return m, loadCalendarCmd(m.currentViewDay(), m.referenceTime(), m.activeCalendarID)
+			return m, loadCalendarCmd(m.currentViewDay(), m.referenceTime())
 		case "l":
-			m.pinCurrentSlotWindow()
 			m.viewDayOffset++
-			return m, loadCalendarCmd(m.currentViewDay(), m.referenceTime(), m.activeCalendarID)
+			return m, loadCalendarCmd(m.currentViewDay(), m.referenceTime())
 		case "j", "down":
 			m.timedScrollOffset = min(m.timedScrollOffset+1, m.maxTimedScrollOffset())
 		case "k", "up":
@@ -103,21 +97,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.createDialog, cmd = newCreateEventDialogForDay(m.currentViewDay(), m.referenceTime())
 			return m, cmd
-		case "c":
-			nextID, label := nextCalendarFilter(m.activeCalendarID, m.data.calendars)
-			m.activeCalendarID = nextID
-			m.statusMessage = "Showing " + label
-			m.timedScrollOffset = 0
-			return m, loadCalendarCmd(m.currentViewDay(), m.referenceTime(), m.activeCalendarID)
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.applyPendingFocus()
 		m.clampTimedScrollOffset()
 	case loadCalendarMsg:
 		m.loading = false
 		m.data = msg.data
 		m.err = msg.err
+		m.applyPendingFocus()
 		m.clampTimedScrollOffset()
 	case currentTimeTickMsg:
 		m.data.currentTime = time.Time(msg)
@@ -126,7 +116,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case calendarRefreshTickMsg:
 		m.data.currentTime = time.Time(msg)
 		m.clampTimedScrollOffset()
-		return m, tea.Batch(loadCalendarCmd(m.currentViewDay(), time.Time(msg), m.activeCalendarID), calendarRefreshTickCmdFunc())
+		return m, tea.Batch(loadCalendarCmd(m.currentViewDay(), time.Time(msg)), calendarRefreshTickCmdFunc())
 	case watchCalendarReadyMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -137,7 +127,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.watchCancel = msg.cancel
 		return m, waitForCalendarChangeCmd(msg.changes)
 	case watchCalendarChangedMsg:
-		return m, tea.Batch(loadCalendarCmd(m.currentViewDay(), m.referenceTime(), m.activeCalendarID), waitForCalendarChangeCmd(m.watchChanges))
+		return m, tea.Batch(loadCalendarCmd(m.currentViewDay(), m.referenceTime()), waitForCalendarChangeCmd(m.watchChanges))
 	case watchCalendarStoppedMsg:
 		if m.watchCancel != nil {
 			m.watchCancel()
@@ -155,7 +145,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.showCreateDialog = false
 		m.createDialog = createEventDialog{}
 		m.clampTimedScrollOffset()
-		return m, loadCalendarCmd(m.currentViewDay(), m.referenceTime(), m.activeCalendarID)
+		return m, loadCalendarCmd(m.currentViewDay(), m.referenceTime())
 	}
 
 	return m, nil
@@ -176,16 +166,8 @@ func (m model) View() string {
 }
 
 func (m model) baseViewContent(contentWidth, contentHeight int) string {
-	var sections []string
-	if status := renderStatusBanner(m.activeCalendarLabel(), m.statusMessage, contentWidth); status != "" {
-		sections = append(sections, status)
-		if contentHeight > 0 {
-			contentHeight -= lipgloss.Height(status)
-			if contentHeight > 0 {
-				contentHeight--
-			}
-		}
-	}
+	footer := footerView(m.showCreateDialog, contentWidth)
+	calendarHeight := m.calendarViewportHeight(contentHeight)
 
 	var b strings.Builder
 	switch {
@@ -194,20 +176,42 @@ func (m model) baseViewContent(contentWidth, contentHeight int) string {
 		if now.IsZero() {
 			now = time.Now()
 		}
-		b.WriteString(renderLoadingCalendarLayoutForDayWithHeightAndScrollUsingWindow(m.currentViewDay(), now, contentWidth, contentHeight, m.timedScrollOffset, m.pinnedSlotWindow))
+		b.WriteString(renderLoadingCalendarLayoutForDayWithHeightAndScroll(m.currentViewDay(), now, contentWidth, calendarHeight, m.timedScrollOffset))
 	case m.err != nil:
 		b.WriteString(friendlyError(m.err))
 	default:
-		b.WriteString(renderCalendarLayoutWithHeightAndScrollUsingWindow(m.data, contentWidth, contentHeight, m.timedScrollOffset, m.pinnedSlotWindow))
+		b.WriteString(renderCalendarLayoutWithHeightAndScroll(m.data, contentWidth, calendarHeight, m.timedScrollOffset))
 	}
 
-	sections = append(sections, b.String())
-	return strings.Join(sections, "\n\n")
+	content := b.String()
+	if footer != "" {
+		content += "\n\n" + footer
+	}
+	return content
 }
 
-func loadCalendarCmd(viewDay, now time.Time, activeCalendarID string) tea.Cmd {
+func (m model) calendarViewportHeight(contentHeight int) int {
+	contentWidth := contentWidthForTerminal(m.width)
+	if footer := footerView(m.showCreateDialog, contentWidth); footer != "" {
+		contentHeight = shrinkContentHeight(contentHeight, footer)
+	}
+	return contentHeight
+}
+
+func shrinkContentHeight(contentHeight int, banner string) int {
+	if contentHeight <= 0 {
+		return contentHeight
+	}
+	contentHeight -= lipgloss.Height(banner)
+	if contentHeight > 0 {
+		contentHeight--
+	}
+	return contentHeight
+}
+
+func loadCalendarCmd(viewDay, now time.Time) tea.Cmd {
 	return func() tea.Msg {
-		data, err := loadCalendar(viewDay, now, activeCalendarID)
+		data, err := loadCalendar(viewDay, now)
 		return loadCalendarMsg{
 			data: data,
 			err:  err,
@@ -332,23 +336,9 @@ func (m model) currentViewDay() time.Time {
 	return beginningOfDay(m.referenceTime()).AddDate(0, 0, m.viewDayOffset)
 }
 
-func (m model) activeCalendarLabel() string {
-	if strings.TrimSpace(m.activeCalendarID) == "" {
-		return ""
-	}
-	return calendarFilterLabel(m.data.calendars, m.activeCalendarID)
-}
-
 func (m model) maxTimedScrollOffset() int {
 	contentWidth := contentWidthForTerminal(m.width)
-	contentHeight := contentHeightForTerminal(m.height)
-
-	if status := renderStatusBanner(m.activeCalendarLabel(), m.statusMessage, contentWidth); status != "" {
-		contentHeight -= lipgloss.Height(status)
-		if contentHeight > 0 {
-			contentHeight--
-		}
-	}
+	contentHeight := m.calendarViewportHeight(contentHeightForTerminal(m.height))
 	if contentHeight <= 0 {
 		return 0
 	}
@@ -359,11 +349,11 @@ func (m model) maxTimedScrollOffset() int {
 		if now.IsZero() {
 			now = time.Now()
 		}
-		return maxLoadingCalendarScroll(m.currentViewDay(), now, contentWidth, contentHeight, m.pinnedSlotWindow)
+		return maxLoadingCalendarScroll(m.currentViewDay(), now, contentWidth, contentHeight, calendarSlotWindow{})
 	case m.err != nil:
 		return 0
 	default:
-		return maxCalendarLayoutScroll(m.data, contentWidth, contentHeight, m.pinnedSlotWindow)
+		return maxCalendarLayoutScroll(m.data, contentWidth, contentHeight, calendarSlotWindow{})
 	}
 }
 
@@ -377,59 +367,42 @@ func (m *model) clampTimedScrollOffset() {
 	}
 }
 
-func (m model) currentSlotWindow() calendarSlotWindow {
-	contentWidth := contentWidthForTerminal(m.width)
-	contentHeight := contentHeightForTerminal(m.height)
-
-	if status := renderStatusBanner(m.activeCalendarLabel(), m.statusMessage, contentWidth); status != "" {
-		contentHeight -= lipgloss.Height(status)
-		if contentHeight > 0 {
-			contentHeight--
-		}
+func (m model) renderNow() time.Time {
+	if m.loading && m.data.currentTime.IsZero() {
+		return time.Now()
 	}
-
-	switch {
-	case m.loading:
-		now := m.data.currentTime
-		if now.IsZero() {
-			now = time.Now()
-		}
-		return effectiveLoadingSlotWindow(now, calendarFixedRowCount(make([][]string, 3), false), contentHeight, m.pinnedSlotWindow)
-	case m.err != nil:
-		return m.pinnedSlotWindow
-	default:
-		allDayLines := make([][]string, len(m.data.sections))
-		for i, section := range m.data.sections {
-			allDayEvents, _ := partitionDayEvents(section.events)
-			allDayLines[i] = renderAllDayLines(allDayEvents, m.data.calendarColors, dayColumnWidth)
-		}
-		return effectiveCalendarSlotWindow(m.data.sections, m.data.currentTime, calendarFixedRowCount(allDayLines, len(m.data.legend) > 0), contentHeight, m.pinnedSlotWindow)
-	}
+	return m.data.currentTime
 }
 
-func (m *model) pinCurrentSlotWindow() {
-	if m == nil {
+func (m model) focusStartSlot(now time.Time) int {
+	if m.loading || len(m.data.sections) == 0 {
+		start, _ := loadingSlotWindow(now)
+		return start
+	}
+	start, _ := visibleSlotWindow(m.data.sections)
+	return start
+}
+
+func (m model) focusScrollOffset() int {
+	now := m.renderNow()
+	focusStart := m.focusStartSlot(now)
+	offset := focusStart
+	if slot, ok := currentTimeMarkerSlot(now, 0, slotsPerDay); ok && slot < focusStart {
+		offset++
+	}
+	return max(0, min(offset, m.maxTimedScrollOffset()))
+}
+
+func (m *model) applyPendingFocus() {
+	if m == nil || !m.focusPending {
 		return
 	}
-	m.pinnedSlotWindow = m.currentSlotWindow()
-}
-
-func renderStatusBanner(activeCalendarLabel, statusMessage string, width int) string {
-	parts := make([]string, 0, 3)
-	if activeCalendarLabel != "" {
-		parts = append(parts, statusPillStyle.Render("Viewing"))
-		parts = append(parts, activeCalendarLabel)
-	}
-	if strings.TrimSpace(statusMessage) != "" {
-		parts = append(parts, statusTextStyle.Render(statusMessage))
-	}
-	if len(parts) == 0 {
-		return ""
+	if m.calendarViewportHeight(contentHeightForTerminal(m.height)) <= 0 {
+		return
 	}
 
-	banner := strings.Join(parts, "  ")
-	if width > 0 {
-		banner = ansi.Truncate(banner, width, "…")
+	m.timedScrollOffset = m.focusScrollOffset()
+	if !m.loading {
+		m.focusPending = false
 	}
-	return banner
 }

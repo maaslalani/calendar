@@ -8,7 +8,6 @@ import (
 
 type calendarData struct {
 	sections       []daySection
-	calendars      []ical.Calendar
 	calendarColors map[string]string
 	legend         []calendarLegendItem
 	currentTime    time.Time

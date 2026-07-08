@@ -247,6 +247,29 @@ func TestBuildCalendarDecorationsUsesCalendarColorsAndFallbacks(t *testing.T) {
 	}
 }
 
+func TestBuildCalendarDecorationsIncludesCalendarsWithoutEvents(t *testing.T) {
+	events := []ical.Event{
+		{Title: "Standup", Calendar: "Work", CalendarID: "work"},
+	}
+
+	_, legend := buildCalendarDecorations([]ical.Calendar{
+		{ID: "work", Title: "Work", Color: "#112233"},
+		{ID: "holidays", Title: "Holidays", Color: "#445566"},
+	}, events)
+
+	labels := make(map[string]bool, len(legend))
+	for _, item := range legend {
+		labels[item.label] = true
+	}
+
+	if !labels["Work"] {
+		t.Fatalf("expected legend to include the Work calendar, got %+v", legend)
+	}
+	if !labels["Holidays"] {
+		t.Fatalf("expected legend to include the Holidays calendar even without events, got %+v", legend)
+	}
+}
+
 func TestEventBackgroundColorDimsCalendarColor(t *testing.T) {
 	if got := eventBackgroundColor("#60A5FA"); got != "#1A2E46" {
 		t.Fatalf("expected dimmed background color #1A2E46, got %q", got)
@@ -358,6 +381,19 @@ func TestRenderAllDayLinesOmitsRecurringMarker(t *testing.T) {
 	}
 	if got := ansi.Strip(lines[0]); got != "  Standup   " {
 		t.Fatalf("expected centered all-day summary line without marker, got %q", got)
+	}
+}
+
+func TestRenderAllDayLinesCapsAtMaxAllDayEvents(t *testing.T) {
+	events := make([]ical.Event, maxAllDayEvents+2)
+	for i := range events {
+		events[i] = ical.Event{Title: "Event", AllDay: true}
+	}
+
+	lines := renderAllDayLines(events, map[string]string{}, 12)
+
+	if len(lines) != maxAllDayEvents {
+		t.Fatalf("expected all-day lines to be capped at %d, got %d", maxAllDayEvents, len(lines))
 	}
 }
 
@@ -979,7 +1015,7 @@ func TestRenderCalendarLayoutWithHeightAndScrollSlicesTimedRows(t *testing.T) {
 	loc := time.FixedZone("test", -8*60*60)
 	day := time.Date(2026, 3, 7, 0, 0, 0, 0, loc)
 
-	layout := ansi.Strip(renderCalendarLayoutWithHeightAndScroll(calendarData{
+	data := calendarData{
 		sections: buildDaySections(day, []ical.Event{
 			{
 				Title:     "Standup",
@@ -987,19 +1023,34 @@ func TestRenderCalendarLayoutWithHeightAndScrollSlicesTimedRows(t *testing.T) {
 				EndDate:   time.Date(2026, 3, 7, 10, 0, 0, 0, loc),
 			},
 		}),
-	}, 120, 8, 2))
-
-	lines := strings.Split(layout, "\n")
-	if len(lines) != 8 {
-		t.Fatalf("expected scrolled layout to render 8 rows, got %d\n%s", len(lines), layout)
 	}
 
-	body := lines[5:]
-	if !strings.Contains(body[0], "9:00 AM") || !strings.Contains(body[1], "9:30 AM") || !strings.Contains(body[2], "10:00 AM") {
-		t.Fatalf("expected timed rows to scroll independently, got %#v\n%s", body, layout)
+	top := ansi.Strip(renderCalendarLayoutWithHeightAndScroll(data, 120, 12, 0))
+	if !strings.Contains(top, "12:00 AM") {
+		t.Fatalf("expected offset 0 to render the start of the day\n%s", top)
 	}
-	if strings.Contains(strings.Join(body, "\n"), "8:00 AM") {
-		t.Fatalf("expected scrolled body to omit earlier timed rows\n%s", layout)
+
+	scrolled := ansi.Strip(renderCalendarLayoutWithHeightAndScroll(data, 120, 12, 6))
+	if strings.Contains(scrolled, "12:00 AM") {
+		t.Fatalf("expected scrolling to move past the start of the day\n%s", scrolled)
+	}
+	if !strings.Contains(scrolled, "3:00 AM") {
+		t.Fatalf("expected scrolled body to reveal later timed rows\n%s", scrolled)
+	}
+}
+
+func TestRenderCalendarLayoutRendersFullDayWithoutEvents(t *testing.T) {
+	loc := time.FixedZone("test", -8*60*60)
+	day := time.Date(2026, 3, 7, 0, 0, 0, 0, loc)
+
+	layout := ansi.Strip(renderCalendarLayoutWithHeight(calendarData{
+		sections: buildDaySections(day, nil),
+	}, 120, 0))
+
+	for _, want := range []string{"12:00 AM", "11:30 PM"} {
+		if !strings.Contains(layout, want) {
+			t.Fatalf("expected empty day to render the full timeline including %q\n%s", want, layout)
+		}
 	}
 }
 
@@ -1268,7 +1319,7 @@ func TestModelUpdateMovesCalendarWindowOnHAndLKeys(t *testing.T) {
 	}
 }
 
-func TestModelUpdateHorizontalNavigationPinsCurrentSlotWindow(t *testing.T) {
+func TestModelUpdateHorizontalNavigationPreservesScrollOffset(t *testing.T) {
 	loc := time.FixedZone("test", -8*60*60)
 	day := time.Date(2026, 3, 7, 0, 0, 0, 0, loc)
 	m := model{
@@ -1298,8 +1349,38 @@ func TestModelUpdateHorizontalNavigationPinsCurrentSlotWindow(t *testing.T) {
 	if gotModel.timedScrollOffset != 2 {
 		t.Fatalf("expected horizontal navigation to preserve the vertical scroll offset, got %d", gotModel.timedScrollOffset)
 	}
-	if want := (calendarSlotWindow{start: 16, end: 26}); gotModel.pinnedSlotWindow != want {
-		t.Fatalf("expected horizontal navigation to pin slot window %#v, got %#v", want, gotModel.pinnedSlotWindow)
+}
+
+func TestModelInitialFocusKeepsFullDayScrollable(t *testing.T) {
+	loc := time.FixedZone("test", -8*60*60)
+	day := time.Date(2026, 3, 7, 0, 0, 0, 0, loc)
+	now := time.Date(2026, 3, 7, 9, 15, 0, 0, loc)
+	m := model{
+		width:        120,
+		height:       20,
+		focusPending: true,
+		data: calendarData{
+			currentTime: now,
+			sections: buildDaySections(day, []ical.Event{
+				{
+					Title:     "Standup",
+					StartDate: time.Date(2026, 3, 7, 9, 0, 0, 0, loc),
+					EndDate:   time.Date(2026, 3, 7, 12, 0, 0, 0, loc),
+				},
+			}),
+		},
+	}
+
+	m.applyPendingFocus()
+
+	if m.focusPending {
+		t.Fatal("expected pending focus to be consumed once the layout is known")
+	}
+	if m.timedScrollOffset <= 0 {
+		t.Fatalf("expected the initial view to focus past the empty early hours, got offset %d", m.timedScrollOffset)
+	}
+	if maxOffset := m.maxTimedScrollOffset(); maxOffset <= m.timedScrollOffset {
+		t.Fatalf("expected the rest of the day to stay scrollable beyond focus offset %d, got max %d", m.timedScrollOffset, maxOffset)
 	}
 }
 
@@ -1418,60 +1499,6 @@ func TestModelUpdateUsesViewedDayForCreateDialog(t *testing.T) {
 	}
 	if gotModel.createDialog.hourInput.value != 9 || gotModel.createDialog.minuteInput.value != 15 {
 		t.Fatalf("expected create dialog to keep the current rounded time on the viewed day, got %02d:%02d", gotModel.createDialog.hourInput.value, gotModel.createDialog.minuteInput.value)
-	}
-}
-
-func TestModelUpdatePressCOutsideDialogCyclesCalendars(t *testing.T) {
-	m := model{
-		data: calendarData{
-			calendars: []ical.Calendar{
-				{ID: "home", Title: "Home"},
-				{ID: "work", Title: "Work"},
-			},
-		},
-	}
-
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
-	gotModel := updated.(model)
-	if cmd == nil {
-		t.Fatal("expected c key to trigger a calendar refresh")
-	}
-	if gotModel.activeCalendarID != "home" {
-		t.Fatalf("expected first calendar to be selected, got %q", gotModel.activeCalendarID)
-	}
-	if !strings.Contains(gotModel.statusMessage, "Home") {
-		t.Fatalf("expected status message to mention the active calendar, got %q", gotModel.statusMessage)
-	}
-
-	updated, _ = gotModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
-	gotModel = updated.(model)
-	if gotModel.activeCalendarID != "work" {
-		t.Fatalf("expected second calendar to be selected, got %q", gotModel.activeCalendarID)
-	}
-
-	updated, _ = gotModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
-	gotModel = updated.(model)
-	if gotModel.activeCalendarID != "" {
-		t.Fatalf("expected calendar cycling to return to all calendars, got %q", gotModel.activeCalendarID)
-	}
-}
-
-func TestModelUpdateDialogCapturesTypedCInTitle(t *testing.T) {
-	dialog, _ := newCreateEventDialog(time.Now())
-	m := model{
-		showCreateDialog: true,
-		activeCalendarID: "work",
-		createDialog:     dialog,
-	}
-
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
-	gotModel := updated.(model)
-
-	if gotModel.activeCalendarID != "work" {
-		t.Fatalf("expected active calendar to stay unchanged while typing, got %q", gotModel.activeCalendarID)
-	}
-	if gotModel.createDialog.titleInput.Value() != "c" {
-		t.Fatalf("expected title input to receive the typed c, got %q", gotModel.createDialog.titleInput.Value())
 	}
 }
 

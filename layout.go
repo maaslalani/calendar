@@ -154,9 +154,7 @@ func effectiveLoadingSlotWindow(now time.Time, fixedRows, terminalHeight int, sl
 		return window
 	}
 
-	windowStart, windowEnd := loadingSlotWindow(now)
-	windowStart, windowEnd = expandSlotWindowToHeight(windowStart, windowEnd, now, fixedRows, terminalHeight)
-	return calendarSlotWindow{start: windowStart, end: windowEnd}
+	return fullDaySlotWindow()
 }
 
 func effectiveCalendarSlotWindow(sections []daySection, now time.Time, fixedRows, terminalHeight int, slotWindow calendarSlotWindow) calendarSlotWindow {
@@ -164,9 +162,11 @@ func effectiveCalendarSlotWindow(sections []daySection, now time.Time, fixedRows
 		return window
 	}
 
-	windowStart, windowEnd := visibleSlotWindow(sections)
-	windowStart, windowEnd = expandSlotWindowToHeight(windowStart, windowEnd, now, fixedRows, terminalHeight)
-	return calendarSlotWindow{start: windowStart, end: windowEnd}
+	return fullDaySlotWindow()
+}
+
+func fullDaySlotWindow() calendarSlotWindow {
+	return calendarSlotWindow{start: 0, end: slotsPerDay}
 }
 
 func normalizedCalendarSlotWindow(slotWindow calendarSlotWindow) (calendarSlotWindow, bool) {
@@ -320,40 +320,6 @@ func calendarFixedRowCount(allDayLines [][]string, hasLegend bool) int {
 		rows += 2
 	}
 	return rows
-}
-
-func calendarContentRowCount(now time.Time, fixedRows, windowStart, windowEnd int) int {
-	rows := fixedRows + windowEnd - windowStart
-	if _, ok := currentTimeMarkerSlot(now, windowStart, windowEnd); ok {
-		rows++
-	}
-	return rows
-}
-
-func expandSlotWindowToHeight(windowStart, windowEnd int, now time.Time, fixedRows, height int) (int, int) {
-	if height <= 0 {
-		return windowStart, windowEnd
-	}
-	if calendarContentRowCount(now, fixedRows, windowStart, windowEnd) >= height {
-		return windowStart, windowEnd
-	}
-
-	expandEarlier := true
-	for calendarContentRowCount(now, fixedRows, windowStart, windowEnd) < height && (windowStart > 0 || windowEnd < slotsPerDay) {
-		switch {
-		case expandEarlier && windowStart > 0:
-			windowStart--
-		case !expandEarlier && windowEnd < slotsPerDay:
-			windowEnd++
-		case windowStart > 0:
-			windowStart--
-		case windowEnd < slotsPerDay:
-			windowEnd++
-		}
-		expandEarlier = !expandEarlier
-	}
-
-	return windowStart, windowEnd
 }
 
 func partitionDayEvents(events []ical.Event) ([]ical.Event, []ical.Event) {
@@ -603,6 +569,10 @@ func slotHasEventBoundary(day time.Time, events []ical.Event, slot int) bool {
 }
 
 func renderAllDayLines(events []ical.Event, calendarColors map[string]string, width int) []string {
+	if len(events) > maxAllDayEvents {
+		events = events[:maxAllDayEvents]
+	}
+
 	lines := make([]string, 0, len(events))
 
 	for _, event := range events {

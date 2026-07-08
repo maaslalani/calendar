@@ -9,44 +9,6 @@ import (
 	ical "github.com/BRO3886/go-eventkit/calendar"
 )
 
-func nextCalendarFilter(activeCalendarID string, calendars []ical.Calendar) (string, string) {
-	if len(calendars) == 0 {
-		return "", "all calendars"
-	}
-
-	index := -1
-	for i, calendar := range calendars {
-		if calendar.ID == activeCalendarID {
-			index = i
-			break
-		}
-	}
-
-	if index == len(calendars)-1 {
-		return "", "all calendars"
-	}
-	if index == -1 {
-		return calendars[0].ID, calendarFilterLabel(calendars, calendars[0].ID)
-	}
-
-	next := calendars[index+1]
-	return next.ID, calendarFilterLabel(calendars, next.ID)
-}
-
-func calendarFilterLabel(calendars []ical.Calendar, calendarID string) string {
-	if strings.TrimSpace(calendarID) == "" {
-		return "all calendars"
-	}
-
-	titleCounts := calendarTitleCounts(calendars)
-	for _, calendar := range calendars {
-		if calendar.ID == calendarID {
-			return calendarDisplayLabel(calendar, titleCounts)
-		}
-	}
-	return "selected calendar"
-}
-
 func calendarTitleCounts(calendars []ical.Calendar) map[string]int {
 	counts := make(map[string]int, len(calendars))
 	for _, calendar := range calendars {
@@ -66,7 +28,7 @@ func sortCalendars(calendars []ical.Calendar) {
 		return calendars[i].ID < calendars[j].ID
 	})
 }
-func loadCalendar(viewDay, now time.Time, activeCalendarID string) (calendarData, error) {
+func loadCalendar(viewDay, now time.Time) (calendarData, error) {
 	if now.IsZero() {
 		now = time.Now()
 	}
@@ -90,12 +52,7 @@ func loadCalendar(viewDay, now time.Time, activeCalendarID string) (calendarData
 	windowStart := viewDay.AddDate(0, 0, -1)
 	windowEnd := viewDay.AddDate(0, 0, 2)
 
-	options := make([]ical.ListOption, 0, 1)
-	if strings.TrimSpace(activeCalendarID) != "" {
-		options = append(options, ical.WithCalendarID(activeCalendarID))
-	}
-
-	events, err := client.Events(windowStart, windowEnd, options...)
+	events, err := client.Events(windowStart, windowEnd)
 	if err != nil {
 		return calendarData{}, err
 	}
@@ -104,7 +61,6 @@ func loadCalendar(viewDay, now time.Time, activeCalendarID string) (calendarData
 
 	return calendarData{
 		sections:       buildDaySections(viewDay, events),
-		calendars:      calendars,
 		calendarColors: calendarColors,
 		legend:         legend,
 		currentTime:    now,
@@ -163,7 +119,18 @@ func buildCalendarDecorations(calendars []ical.Calendar, events []ical.Event) (m
 	}
 
 	calendarColors := make(map[string]string, len(events)*2)
-	legendByKey := make(map[string]calendarLegendItem, len(events))
+	legendByKey := make(map[string]calendarLegendItem, len(calendars)+len(events))
+
+	// Seed the legend with every calendar so they always appear, even when
+	// they have no events in the current view.
+	for _, calendar := range calendars {
+		key := calendarKey(calendar)
+		legendByKey[key] = calendarLegendItem{
+			key:   key,
+			label: calendarDisplayLabel(calendar, titleCounts),
+			color: normalizeCalendarColor(calendar.Color, key),
+		}
+	}
 
 	for _, event := range events {
 		key := legendKeyForEvent(event)

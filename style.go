@@ -29,8 +29,6 @@ var (
 	currentTimeLineStyle = lipgloss.NewStyle().Foreground(currentTimeColor)
 	currentTimeEdgeStyle = lipgloss.NewStyle().Foreground(currentTimeEdgeColor)
 	screenStyle          = lipgloss.NewStyle().Padding(screenPaddingY, screenPaddingX)
-	statusPillStyle      = lipgloss.NewStyle().Foreground(dialogButtonText).Background(currentTimeColor).Bold(true).Padding(0, 1)
-	statusTextStyle      = lipgloss.NewStyle().Foreground(dialogMutedColor)
 	dialogCardStyle      = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(dialogBorderColor).

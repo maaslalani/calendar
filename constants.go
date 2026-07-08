@@ -13,6 +13,7 @@ const (
 	dialogPaddingY       = 1
 	dialogMinuteStep     = 15
 	minAllDayBufferRows  = 2
+	maxAllDayEvents      = 3
 	slotDuration         = 30 * time.Minute
 	slotsPerDay          = int((24 * time.Hour) / slotDuration)
 	defaultWindowFrom    = 16
