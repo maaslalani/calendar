@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -144,6 +145,14 @@ func renderEventSummaryLine(title, marker, color string, width int) string {
 	}
 
 	return eventForegroundStyle(color).Render(renderEventBody(title, marker, color, "", width, true))
+}
+
+func renderAllDayMoreLine(hidden, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	return allDayMoreStyle.Render(renderEventBody(fmt.Sprintf("+%d more", hidden), "", "", "", width, true))
 }
 
 func visibleSlotWindow(sections []daySection) (int, int) {

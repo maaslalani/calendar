@@ -286,8 +286,8 @@ func appendAllDaySectionRows(rows []string, allDayLines [][]string, layout calen
 		return rows
 	}
 
-	lineCount := allDaySectionLineCount(allDayLines)
-	for lineIndex := 0; lineIndex < lineCount; lineIndex++ {
+	rowCount := allDayRegionRowCount(allDayLines)
+	for lineIndex := 0; lineIndex < rowCount; lineIndex++ {
 		cells := make([]string, len(allDayLines))
 		for i := range allDayLines {
 			if lineIndex < len(allDayLines[i]) {
@@ -303,7 +303,7 @@ func appendAllDaySectionRows(rows []string, allDayLines [][]string, layout calen
 		rows = append(rows, renderRow(label, cells, timeAxisStyle, dayCellStyle, layout))
 	}
 
-	return append(rows, renderRow("", make([]string, len(allDayLines)), timeAxisStyle, dayCellStyle, layout))
+	return rows
 }
 
 func allDaySectionLineCount(allDayLines [][]string) int {
@@ -314,8 +314,16 @@ func allDaySectionLineCount(allDayLines [][]string) int {
 	return lineCount
 }
 
+// allDayRegionRowCount returns the fixed number of rows reserved for the
+// all-day region. Event lines fill from the top and any remaining rows act as
+// the buffer before the timeline. Keeping this constant stops the timeline from
+// shifting as the all-day event count changes.
+func allDayRegionRowCount(allDayLines [][]string) int {
+	return max(minAllDayBufferRows+1, allDaySectionLineCount(allDayLines))
+}
+
 func calendarFixedRowCount(allDayLines [][]string, hasLegend bool) int {
-	rows := 2 + allDaySectionLineCount(allDayLines) + 1
+	rows := 2 + allDayRegionRowCount(allDayLines)
 	if hasLegend {
 		rows += 2
 	}
@@ -569,14 +577,22 @@ func slotHasEventBoundary(day time.Time, events []ical.Event, slot int) bool {
 }
 
 func renderAllDayLines(events []ical.Event, calendarColors map[string]string, width int) []string {
-	if len(events) > maxAllDayEvents {
-		events = events[:maxAllDayEvents]
+	visibleCount := len(events)
+	overflow := false
+	if visibleCount > maxAllDayEvents {
+		// Reserve the last row for a "+N more" indicator rather than dropping
+		// the overflowing events silently.
+		visibleCount = maxAllDayEvents - 1
+		overflow = true
 	}
 
-	lines := make([]string, 0, len(events))
-
-	for _, event := range events {
+	lines := make([]string, 0, maxAllDayEvents)
+	for _, event := range events[:visibleCount] {
 		lines = append(lines, renderEventSummaryLine(displayEventTitle(event), "", eventCalendarColor(event, calendarColors), width))
+	}
+
+	if overflow {
+		lines = append(lines, renderAllDayMoreLine(len(events)-visibleCount, width))
 	}
 
 	return lines

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -394,6 +395,78 @@ func TestRenderAllDayLinesCapsAtMaxAllDayEvents(t *testing.T) {
 
 	if len(lines) != maxAllDayEvents {
 		t.Fatalf("expected all-day lines to be capped at %d, got %d", maxAllDayEvents, len(lines))
+	}
+}
+
+func TestRenderAllDayLinesShowsOverflowIndicator(t *testing.T) {
+	events := make([]ical.Event, maxAllDayEvents+2)
+	for i := range events {
+		events[i] = ical.Event{Title: "Event", AllDay: true}
+	}
+
+	lines := renderAllDayLines(events, map[string]string{}, 20)
+
+	if len(lines) != maxAllDayEvents {
+		t.Fatalf("expected %d all-day lines, got %d", maxAllDayEvents, len(lines))
+	}
+
+	hidden := len(events) - (maxAllDayEvents - 1)
+	last := ansi.Strip(lines[len(lines)-1])
+	if want := "+" + strconv.Itoa(hidden) + " more"; !strings.Contains(last, want) {
+		t.Fatalf("expected overflow indicator %q, got %q", want, last)
+	}
+}
+
+func TestRenderAllDayLinesWithoutOverflowOmitsIndicator(t *testing.T) {
+	events := make([]ical.Event, maxAllDayEvents)
+	for i := range events {
+		events[i] = ical.Event{Title: "Event", AllDay: true}
+	}
+
+	lines := renderAllDayLines(events, map[string]string{}, 20)
+
+	if len(lines) != maxAllDayEvents {
+		t.Fatalf("expected %d all-day lines, got %d", maxAllDayEvents, len(lines))
+	}
+	for _, line := range lines {
+		if strings.Contains(ansi.Strip(line), "more") {
+			t.Fatalf("did not expect overflow indicator, got %q", ansi.Strip(line))
+		}
+	}
+}
+
+func TestRenderCalendarLayoutKeepsTimelineFixedWithAllDayEvents(t *testing.T) {
+	loc := time.FixedZone("test", -8*60*60)
+	now := time.Date(2026, 3, 7, 9, 15, 0, 0, loc)
+	day := beginningOfDay(now)
+
+	timelineRow := func(eventCount int) int {
+		events := make([]ical.Event, eventCount)
+		for i := range events {
+			events[i] = ical.Event{Title: "Holiday", AllDay: true, StartDate: day, EndDate: day.AddDate(0, 0, 1)}
+		}
+
+		layout := ansi.Strip(renderCalendarLayout(calendarData{
+			sections:    buildDaySections(now, events),
+			currentTime: now,
+		}, 120))
+
+		for i, line := range strings.Split(layout, "\n") {
+			if strings.Contains(line, "12:00 AM") {
+				return i
+			}
+		}
+		return -1
+	}
+
+	baseline := timelineRow(0)
+	if baseline == -1 {
+		t.Fatal("expected to find the timeline start row")
+	}
+	for _, count := range []int{1, 2, 3, 4, 6} {
+		if got := timelineRow(count); got != baseline {
+			t.Fatalf("expected timeline to stay at row %d with %d all-day events, got %d", baseline, count, got)
+		}
 	}
 }
 

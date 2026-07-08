@@ -23,6 +23,7 @@ var (
 	activeTimeAxisStyle  = lipgloss.NewStyle().Foreground(timelineActiveColor).Width(timeColumnWidth).Align(lipgloss.Right)
 	currentTimeAxisStyle = lipgloss.NewStyle().Foreground(currentTimeColor).Bold(true).Width(timeColumnWidth).Align(lipgloss.Right)
 	dayCellStyle         = lipgloss.NewStyle().Width(dayColumnWidth)
+	allDayMoreStyle      = lipgloss.NewStyle().Foreground(timelineMutedColor)
 	headerCellStyle      = lipgloss.NewStyle().Bold(true).Width(dayColumnWidth).Align(lipgloss.Center)
 	dateCellStyle        = lipgloss.NewStyle().Faint(true).Width(dayColumnWidth).Align(lipgloss.Center)
 	columnSeparator      = lipgloss.NewStyle().Render("  ")
