@@ -22,7 +22,7 @@ func renderTimedLines(day time.Time, events []ical.Event, calendarColors map[str
 			continue
 		}
 
-		lines[slot-windowStart] = renderTimedBlockLines(active, slot, windowStart, calendarColors, layouts[active[0].cluster])
+		lines[slot-windowStart] = renderTimedBlockLines(active, slot, windowStart, windowEnd, calendarColors, layouts[active[0].cluster])
 	}
 
 	return lines
@@ -110,7 +110,7 @@ func activeBlocksAtTime(day time.Time, blocks []timedEventBlock, now time.Time) 
 	return active
 }
 
-func renderTimedBlockLines(active []timedEventBlock, slot, windowStart int, calendarColors map[string]string, layout timedEventLayout) []string {
+func renderTimedBlockLines(active []timedEventBlock, slot, windowStart, windowEnd int, calendarColors map[string]string, layout timedEventLayout) []string {
 	if len(active) == 0 {
 		return nil
 	}
@@ -121,22 +121,55 @@ func renderTimedBlockLines(active []timedEventBlock, slot, windowStart int, cale
 	}
 
 	for _, block := range active {
-		title := ""
-		if block.startSlot == slot {
-			title = displayEventTitle(block.event)
-		}
+		color := eventCalendarColor(block.event, calendarColors)
+		accents := []eventAccentSegment{{accent: block.accent, color: color}}
+		backgroundColor := eventBackgroundColor(color)
+		width := layout.columnWidths[block.layer]
+
 		marker := ""
 		if slot == max(block.startSlot, windowStart) {
 			marker = displayEventMarker(block.event)
 		}
-		color := eventCalendarColor(block.event, calendarColors)
-		lineParts[block.layer] = renderEventLine(title, marker, color, []eventAccentSegment{{
-			accent: block.accent,
-			color:  color,
-		}}, layout.columnWidths[block.layer], eventBackgroundColor(color))
+
+		title := timedBlockTitleLine(block, slot, windowStart, windowEnd, accents, backgroundColor, width)
+		lineParts[block.layer] = renderEventLine(title, marker, color, accents, width, backgroundColor)
 	}
 
 	return []string{strings.Join(lineParts, layout.separator)}
+}
+
+func timedBlockTitleLine(block timedEventBlock, slot, windowStart, windowEnd int, accents []eventAccentSegment, backgroundColor string, width int) string {
+	if block.startSlot < windowStart {
+		return ""
+	}
+
+	prefixWidth := lipgloss.Width(renderAccentPrefix(accents, backgroundColor))
+	wrapWidth := width - prefixWidth - eventMarkerWidth(displayEventMarker(block.event))
+	maxLines := min(block.endSlot, windowEnd) - block.startSlot
+
+	lines := wrapEventTitle(displayEventTitle(block.event), wrapWidth, maxLines)
+	lineIndex := slot - block.startSlot
+	if lineIndex < 0 || lineIndex >= len(lines) {
+		return ""
+	}
+	return lines[lineIndex]
+}
+
+func wrapEventTitle(title string, width, maxLines int) []string {
+	if width <= 0 || maxLines <= 0 {
+		return nil
+	}
+	if maxLines == 1 {
+		return []string{title}
+	}
+
+	lines := strings.Split(ansi.Wrap(title, width, ""), "\n")
+	if len(lines) <= maxLines {
+		return lines
+	}
+
+	lines[maxLines-1] = strings.Join(lines[maxLines-1:], " ")
+	return lines[:maxLines]
 }
 
 func renderEventSummaryLine(title, marker, color string, width int) string {
