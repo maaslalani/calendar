@@ -20,5 +20,5 @@ func run() error {
 }
 
 func newProgram() *tea.Program {
-	return tea.NewProgram(initialModel(), tea.WithAltScreen())
+	return tea.NewProgram(initialModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 }
