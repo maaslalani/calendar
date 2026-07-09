@@ -10,7 +10,7 @@ var (
 		key.NewBinding(key.WithKeys("h", "l"), key.WithHelp("h/l", "days")),
 		key.NewBinding(key.WithKeys("j", "k"), key.WithHelp("j/k", "scroll")),
 		key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new")),
-		key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "today")),
+		key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "today")),
 		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 	}
 

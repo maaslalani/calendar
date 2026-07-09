@@ -48,6 +48,10 @@ type model struct {
 	watchCancel       context.CancelFunc
 	showCreateDialog  bool
 	createDialog      createEventDialog
+	dragging          bool
+	dragDay           time.Time
+	dragStartSlot     int
+	dragEndSlot       int
 }
 
 func initialModel() model {
@@ -78,7 +82,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.watchChanges = nil
 			}
 			return m, tea.Quit
-		case "r":
+		case "t":
 			m.viewDayOffset = 0
 			m.focusPending = true
 			now := m.referenceTime()
@@ -104,6 +108,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.applyPendingFocus()
 		m.clampTimedScrollOffset()
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	case loadCalendarMsg:
 		m.loading = false
 		m.data = msg.data
@@ -181,7 +187,7 @@ func (m model) baseViewContent(contentWidth, contentHeight int) string {
 	case m.err != nil:
 		b.WriteString(friendlyError(m.err))
 	default:
-		b.WriteString(renderCalendarLayoutWithHeightAndScroll(m.data, contentWidth, calendarHeight, m.timedScrollOffset))
+		b.WriteString(renderCalendarLayoutWithHeightAndScroll(m.renderData(), contentWidth, calendarHeight, m.timedScrollOffset))
 	}
 
 	content := b.String()

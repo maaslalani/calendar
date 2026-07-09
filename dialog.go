@@ -158,12 +158,26 @@ func newCreateEventDialogForDay(day, reference time.Time) (createEventDialog, te
 		startDay = base
 	}
 	start := nextQuarterHour(wallClockTimeOnDay(beginningOfDay(startDay), base))
+	return newCreateEventDialogAt(start, 30)
+}
+
+// newCreateEventDialogAt builds a create dialog pre-filled with an explicit
+// start time and duration in minutes. It backs both the keyboard ("n") and the
+// mouse drag-to-create entry points.
+func newCreateEventDialogAt(start time.Time, durationMinutes int) (createEventDialog, tea.Cmd) {
+	if start.IsZero() {
+		start = nextQuarterHour(time.Now())
+	}
+	if durationMinutes < dialogMinuteStep {
+		durationMinutes = dialogMinuteStep
+	}
+
 	dialog := createEventDialog{
 		titleInput:    newDialogTextInput("Title", "", 24),
 		startDate:     beginningOfDay(start),
 		hourInput:     newDialogNumberInput(start.Hour(), 0, 23, 1, 4, false, formatDialogClockValue),
 		minuteInput:   newDialogNumberInput(start.Minute(), 0, 45, dialogMinuteStep, 4, false, formatDialogClockValue),
-		durationInput: newDialogNumberInput(30, dialogMinuteStep, -1, dialogMinuteStep, 4, false, nil),
+		durationInput: newDialogNumberInput(durationMinutes, dialogMinuteStep, -1, dialogMinuteStep, 4, false, nil),
 		focusIndex:    dialogFocusTitle,
 	}
 

@@ -1327,7 +1327,7 @@ func TestModelQuitCancelsCalendarWatcher(t *testing.T) {
 	}
 }
 
-func TestModelUpdateRefreshesCalendarOnRKey(t *testing.T) {
+func TestModelUpdateRefreshesCalendarOnTKey(t *testing.T) {
 	loc := time.FixedZone("test", -8*60*60)
 	now := time.Date(2026, 3, 7, 9, 15, 0, 0, loc)
 	m := model{
@@ -1339,11 +1339,11 @@ func TestModelUpdateRefreshesCalendarOnRKey(t *testing.T) {
 		},
 	}
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
 	gotModel := updated.(model)
 
 	if cmd == nil {
-		t.Fatal("expected r key to trigger a refresh command")
+		t.Fatal("expected t key to trigger a refresh command")
 	}
 	if gotModel.watchChanges == nil {
 		t.Fatal("expected manual refresh to keep the watcher active")
@@ -1352,7 +1352,7 @@ func TestModelUpdateRefreshesCalendarOnRKey(t *testing.T) {
 		t.Fatal("expected manual refresh to keep the watcher cancel function")
 	}
 	if gotModel.viewDayOffset != 0 {
-		t.Fatalf("expected r key to reset the viewed day offset, got %d", gotModel.viewDayOffset)
+		t.Fatalf("expected t key to reset the viewed day offset, got %d", gotModel.viewDayOffset)
 	}
 }
 
@@ -2438,4 +2438,244 @@ func mustLoadLocation(t *testing.T, name string) *time.Location {
 		t.Fatalf("load location %q: %v", name, err)
 	}
 	return loc
+}
+
+func TestDayColumnAtX(t *testing.T) {
+	widths := []int{34, 34, 34}
+	cases := []struct {
+		localX    int
+		wantIndex int
+		wantOK    bool
+	}{
+		{localX: -1, wantOK: false},
+		{localX: 9, wantOK: false}, // time-axis gutter
+		{localX: 10, wantIndex: 0, wantOK: true},
+		{localX: 43, wantIndex: 0, wantOK: true},
+		{localX: 44, wantOK: false}, // separator between day 0 and 1
+		{localX: 46, wantIndex: 1, wantOK: true},
+		{localX: 79, wantIndex: 1, wantOK: true},
+		{localX: 82, wantIndex: 2, wantOK: true},
+		{localX: 115, wantIndex: 2, wantOK: true},
+		{localX: 116, wantOK: false}, // past the last column
+	}
+
+	for _, tc := range cases {
+		index, ok := dayColumnAtX(tc.localX, widths)
+		if ok != tc.wantOK {
+			t.Fatalf("dayColumnAtX(%d) ok = %v, want %v", tc.localX, ok, tc.wantOK)
+		}
+		if ok && index != tc.wantIndex {
+			t.Fatalf("dayColumnAtX(%d) index = %d, want %d", tc.localX, index, tc.wantIndex)
+		}
+	}
+}
+
+func TestCalendarViewGeometrySlotAt(t *testing.T) {
+	geo := calendarViewGeometry{
+		headerRows:    5,
+		timedRowSlots: []int{0, 1, 2, 3, 4, 5, 6, 7},
+		visibleStart:  2,
+		visibleCount:  3,
+	}
+
+	cases := []struct {
+		y        int
+		wantSlot int
+		wantOK   bool
+	}{
+		{y: 5, wantOK: false},             // above the timed rows
+		{y: 6, wantSlot: 2, wantOK: true}, // first visible row -> visibleStart
+		{y: 8, wantSlot: 4, wantOK: true}, // last visible row
+		{y: 9, wantOK: false},             // beyond the viewport
+	}
+
+	for _, tc := range cases {
+		slot, ok := geo.slotAt(tc.y)
+		if ok != tc.wantOK {
+			t.Fatalf("slotAt(%d) ok = %v, want %v", tc.y, ok, tc.wantOK)
+		}
+		if ok && slot != tc.wantSlot {
+			t.Fatalf("slotAt(%d) slot = %d, want %d", tc.y, slot, tc.wantSlot)
+		}
+	}
+}
+
+func TestModelWithSelectionPreviewsDragEvent(t *testing.T) {
+	loc := time.FixedZone("test", -8*60*60)
+	day := time.Date(2026, 3, 7, 0, 0, 0, 0, loc)
+	data := calendarData{sections: buildDaySections(day, nil)}
+
+	preview := data.withSelection(day, 18, 20) // 9:00 AM through 10:30 AM
+
+	if len(data.sections[1].events) != 0 {
+		t.Fatalf("withSelection mutated the original data: %d events", len(data.sections[1].events))
+	}
+
+	todayEvents := preview.sections[1].events
+	if len(todayEvents) != 1 {
+		t.Fatalf("expected 1 provisional event on today, got %d", len(todayEvents))
+	}
+
+	event := todayEvents[0]
+	wantStart := time.Date(2026, 3, 7, 9, 0, 0, 0, loc)
+	wantEnd := time.Date(2026, 3, 7, 10, 30, 0, 0, loc)
+	if !event.StartDate.Equal(wantStart) || !event.EndDate.Equal(wantEnd) {
+		t.Fatalf("provisional event = %s-%s, want %s-%s", event.StartDate, event.EndDate, wantStart, wantEnd)
+	}
+
+	for _, i := range []int{0, 2} {
+		if len(preview.sections[i].events) != 0 {
+			t.Fatalf("expected no provisional event on section %d", i)
+		}
+	}
+}
+
+func TestMouseWheelScrollsTimeline(t *testing.T) {
+	loc := time.FixedZone("test", -8*60*60)
+	now := time.Date(2026, 3, 7, 15, 0, 0, 0, loc)
+	m := model{
+		width:             120,
+		height:            40,
+		timedScrollOffset: 5,
+		data: calendarData{
+			sections:    buildDaySections(now, nil),
+			currentTime: now,
+		},
+	}
+
+	updated, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp})
+	if got := updated.(model).timedScrollOffset; got != 4 {
+		t.Fatalf("wheel up offset = %d, want 4", got)
+	}
+
+	updated, _ = updated.(model).Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown})
+	if got := updated.(model).timedScrollOffset; got != 5 {
+		t.Fatalf("wheel down offset = %d, want 5", got)
+	}
+}
+
+func TestMouseIgnoredWhileDialogOpen(t *testing.T) {
+	loc := time.FixedZone("test", -8*60*60)
+	now := time.Date(2026, 3, 7, 15, 0, 0, 0, loc)
+	m := model{
+		width:            120,
+		height:           40,
+		showCreateDialog: true,
+		data: calendarData{
+			sections:    buildDaySections(now, nil),
+			currentTime: now,
+		},
+	}
+
+	updated, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: 50, Y: 8})
+	if updated.(model).dragging {
+		t.Fatal("expected mouse press to be ignored while the create dialog is open")
+	}
+}
+
+func TestMouseDragOpensPrefilledDialog(t *testing.T) {
+	loc := time.FixedZone("test", -8*60*60)
+	now := time.Date(2026, 3, 7, 15, 0, 0, 0, loc)
+	m := model{
+		width:  120,
+		height: 40,
+		data: calendarData{
+			sections:    buildDaySections(now, nil),
+			currentTime: now,
+		},
+	}
+
+	lines := strings.Split(m.View(), "\n")
+	startY := lineIndexContaining(t, lines, "10:00 AM")
+	endY := lineIndexContaining(t, lines, "11:00 AM")
+	headerY := lineIndexContaining(t, lines, "Mar 7")
+	x := columnContaining(t, lines[headerY], "Mar 7")
+
+	updated, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: x, Y: startY})
+	dragged := updated.(model)
+	if !dragged.dragging {
+		t.Fatal("expected mouse press to begin a drag")
+	}
+
+	updated, _ = dragged.Update(tea.MouseMsg{Action: tea.MouseActionMotion, Button: tea.MouseButtonLeft, X: x, Y: endY})
+	updated, cmd := updated.(model).Update(tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonNone, X: x, Y: endY})
+	final := updated.(model)
+
+	if final.dragging {
+		t.Fatal("expected drag to end on mouse release")
+	}
+	if !final.showCreateDialog {
+		t.Fatal("expected the create dialog to open after a drag")
+	}
+	if cmd == nil {
+		t.Fatal("expected a command from opening the dialog")
+	}
+
+	if got := final.createDialog.startDate; !beginningOfDay(got).Equal(time.Date(2026, 3, 7, 0, 0, 0, 0, loc)) {
+		t.Fatalf("dialog start day = %s, want 2026-03-07", got)
+	}
+	if got := final.createDialog.hourInput.value; got != 10 {
+		t.Fatalf("dialog start hour = %d, want 10", got)
+	}
+	if got := final.createDialog.minuteInput.value; got != 0 {
+		t.Fatalf("dialog start minute = %d, want 0", got)
+	}
+	if got := final.createDialog.durationInput.value; got != 90 {
+		t.Fatalf("dialog duration = %d, want 90", got)
+	}
+}
+
+func TestMouseDragUpwardNormalizesSelection(t *testing.T) {
+	loc := time.FixedZone("test", -8*60*60)
+	now := time.Date(2026, 3, 7, 15, 0, 0, 0, loc)
+	m := model{
+		width:  120,
+		height: 40,
+		data: calendarData{
+			sections:    buildDaySections(now, nil),
+			currentTime: now,
+		},
+	}
+
+	lines := strings.Split(m.View(), "\n")
+	lowY := lineIndexContaining(t, lines, " 2:00 PM")
+	highY := lineIndexContaining(t, lines, " 1:00 PM")
+	headerY := lineIndexContaining(t, lines, "Mar 8")
+	x := columnContaining(t, lines[headerY], "Mar 8")
+
+	updated, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: x, Y: lowY})
+	updated, _ = updated.(model).Update(tea.MouseMsg{Action: tea.MouseActionMotion, Button: tea.MouseButtonLeft, X: x, Y: highY})
+	updated, _ = updated.(model).Update(tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonNone, X: x, Y: highY})
+	final := updated.(model)
+
+	if got := final.createDialog.hourInput.value; got != 13 {
+		t.Fatalf("dialog start hour = %d, want 13 (1:00 PM)", got)
+	}
+	if got := final.createDialog.durationInput.value; got != 90 {
+		t.Fatalf("dialog duration = %d, want 90", got)
+	}
+	if !beginningOfDay(final.createDialog.startDate).Equal(time.Date(2026, 3, 8, 0, 0, 0, 0, loc)) {
+		t.Fatalf("dialog start day = %s, want 2026-03-08 (Tomorrow column)", final.createDialog.startDate)
+	}
+}
+
+func lineIndexContaining(t *testing.T, lines []string, sub string) int {
+	t.Helper()
+	for i, line := range lines {
+		if strings.Contains(ansi.Strip(line), sub) {
+			return i
+		}
+	}
+	t.Fatalf("no rendered line contains %q", sub)
+	return -1
+}
+
+func columnContaining(t *testing.T, line, sub string) int {
+	t.Helper()
+	plain := ansi.Strip(line)
+	idx := strings.Index(plain, sub)
+	if idx < 0 {
+		t.Fatalf("line %q does not contain %q", plain, sub)
+	}
+	return len([]rune(plain[:idx]))
 }

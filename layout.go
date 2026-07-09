@@ -10,9 +10,10 @@ import (
 )
 
 type calendarRenderSections struct {
-	headerRows []string
-	timedRows  []string
-	footerRows []string
+	headerRows    []string
+	timedRows     []string
+	timedRowSlots []int
+	footerRows    []string
 }
 
 func renderLoadingCalendarLayout(now time.Time, terminalWidth int) string {
@@ -61,9 +62,11 @@ func buildLoadingCalendarRenderSections(viewDay, now time.Time, terminalWidth, t
 		timedLines[i] = make([][]string, windowEnd-windowStart)
 	}
 
+	timedRows, timedRowSlots := renderTimedWindowRows(sections, now, nil, layout, windowStart, windowEnd, timedLines)
 	return calendarRenderSections{
-		headerRows: headerRows,
-		timedRows:  renderTimedWindowRows(sections, now, nil, layout, windowStart, windowEnd, timedLines),
+		headerRows:    headerRows,
+		timedRows:     timedRows,
+		timedRowSlots: timedRowSlots,
 	}
 }
 
@@ -142,10 +145,12 @@ func buildCalendarRenderSections(data calendarData, terminalWidth, terminalHeigh
 	headerRows = appendAllDaySectionRows(headerRows, allDayLines, layout)
 	footerRows := renderLegendRows(data.legend)
 
+	timedRows, timedRowSlots := renderTimedWindowRows(data.sections, data.currentTime, data.calendarColors, layout, windowStart, windowEnd, timedLines)
 	return calendarRenderSections{
-		headerRows: headerRows,
-		timedRows:  renderTimedWindowRows(data.sections, data.currentTime, data.calendarColors, layout, windowStart, windowEnd, timedLines),
-		footerRows: footerRows,
+		headerRows:    headerRows,
+		timedRows:     timedRows,
+		timedRowSlots: timedRowSlots,
+		footerRows:    footerRows,
 	}
 }
 
@@ -196,16 +201,35 @@ func visibleTimedRows(sections calendarRenderSections, terminalHeight, scrollOff
 		return sections.timedRows
 	}
 
-	viewportRows := timedViewportRowCount(sections, terminalHeight)
-	if viewportRows <= 0 {
+	start, count := visibleTimedRowRange(sections, terminalHeight, scrollOffset)
+	if count <= 0 {
 		return nil
 	}
-	if viewportRows >= len(sections.timedRows) {
+	if start == 0 && count >= len(sections.timedRows) {
 		return sections.timedRows
 	}
+	return sections.timedRows[start : start+count]
+}
 
-	scrollOffset = min(max(0, scrollOffset), maxCalendarRenderScrollOffset(sections, terminalHeight))
-	return sections.timedRows[scrollOffset : scrollOffset+viewportRows]
+// visibleTimedRowRange reports the index of the first visible timed row and the
+// number of timed rows on screen for the given viewport height and scroll
+// offset. It mirrors the slicing performed by visibleTimedRows so callers can
+// map screen coordinates back to timed rows.
+func visibleTimedRowRange(sections calendarRenderSections, terminalHeight, scrollOffset int) (int, int) {
+	if terminalHeight <= 0 {
+		return 0, len(sections.timedRows)
+	}
+
+	viewportRows := timedViewportRowCount(sections, terminalHeight)
+	if viewportRows <= 0 {
+		return 0, 0
+	}
+	if viewportRows >= len(sections.timedRows) {
+		return 0, len(sections.timedRows)
+	}
+
+	start := min(max(0, scrollOffset), maxCalendarRenderScrollOffset(sections, terminalHeight))
+	return start, viewportRows
 }
 
 func timedViewportRowCount(sections calendarRenderSections, terminalHeight int) int {
@@ -231,12 +255,14 @@ func maxCalendarRenderScrollOffset(sections calendarRenderSections, terminalHeig
 	return len(sections.timedRows) - viewportRows
 }
 
-func renderTimedWindowRows(sections []daySection, now time.Time, calendarColors map[string]string, layout calendarLayout, windowStart, windowEnd int, timedLines [][][]string) []string {
+func renderTimedWindowRows(sections []daySection, now time.Time, calendarColors map[string]string, layout calendarLayout, windowStart, windowEnd int, timedLines [][][]string) ([]string, []int) {
 	rows := make([]string, 0, windowEnd-windowStart+1)
+	slots := make([]int, 0, windowEnd-windowStart+1)
 	currentLineSlot, showCurrentLine := currentTimeMarkerSlot(now, windowStart, windowEnd)
 	for slot := windowStart; slot < windowEnd; slot++ {
 		if showCurrentLine && currentLineSlot == slot {
 			rows = append(rows, renderCurrentTimeRow(now, sections, calendarColors, layout))
+			slots = append(slots, slot)
 		}
 
 		slotRows := 1
@@ -264,14 +290,16 @@ func renderTimedWindowRows(sections []daySection, now time.Time, calendarColors 
 			}
 
 			rows = append(rows, renderRow(label, cells, labelStyle, dayCellStyle, layout))
+			slots = append(slots, slot)
 		}
 	}
 
 	if showCurrentLine && currentLineSlot == windowEnd {
 		rows = append(rows, renderCurrentTimeRow(now, sections, calendarColors, layout))
+		slots = append(slots, min(windowEnd, slotsPerDay-1))
 	}
 
-	return rows
+	return rows, slots
 }
 
 func renderLegendRows(items []calendarLegendItem) []string {

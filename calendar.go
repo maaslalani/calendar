@@ -107,6 +107,39 @@ func buildDaySections(today time.Time, events []ical.Event) []daySection {
 func eventOverlapsDay(event ical.Event, dayStart, dayEnd time.Time) bool {
 	return event.StartDate.Before(dayEnd) && event.EndDate.After(dayStart)
 }
+
+// withSelection returns a copy of the calendar data with a provisional "New
+// event" block covering the given slot range on the matching day. It is used to
+// preview an in-progress mouse drag without mutating the loaded data.
+func (d calendarData) withSelection(day time.Time, startSlot, endSlot int) calendarData {
+	if startSlot < 0 || endSlot < startSlot {
+		return d
+	}
+
+	dayStart := beginningOfDay(day)
+	selection := ical.Event{
+		Title:     "New event",
+		StartDate: dayStart.Add(time.Duration(startSlot) * slotDuration),
+		EndDate:   dayStart.Add(time.Duration(endSlot+1) * slotDuration),
+	}
+
+	sections := make([]daySection, len(d.sections))
+	copy(sections, d.sections)
+	for i := range sections {
+		if !beginningOfDay(sections[i].date).Equal(dayStart) {
+			continue
+		}
+
+		events := make([]ical.Event, 0, len(sections[i].events)+1)
+		events = append(events, sections[i].events...)
+		events = append(events, selection)
+		sections[i].events = events
+	}
+
+	result := d
+	result.sections = sections
+	return result
+}
 func buildCalendarDecorations(calendars []ical.Calendar, events []ical.Event) (map[string]string, []calendarLegendItem) {
 	calendarByID := make(map[string]ical.Calendar, len(calendars))
 	calendarsByTitle := make(map[string][]ical.Calendar, len(calendars))
