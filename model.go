@@ -49,9 +49,14 @@ type model struct {
 	showCreateDialog  bool
 	createDialog      createEventDialog
 	dragging          bool
+	dragMoved         bool
 	dragDay           time.Time
 	dragStartSlot     int
 	dragEndSlot       int
+	draftActive       bool
+	draftDay          time.Time
+	draftStartSlot    int
+	draftEndSlot      int
 }
 
 func initialModel() model {
@@ -149,8 +154,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		m.showCreateDialog = false
-		m.createDialog = createEventDialog{}
+		m.closeCreateDialog()
 		m.clampTimedScrollOffset()
 		return m, loadCalendarCmd(m.currentViewDay(), m.referenceTime())
 	}
@@ -372,6 +376,25 @@ func (m *model) clampTimedScrollOffset() {
 	if m.timedScrollOffset < 0 {
 		m.timedScrollOffset = 0
 	}
+}
+
+func (m *model) closeCreateDialog() {
+	if m == nil {
+		return
+	}
+	m.showCreateDialog = false
+	m.createDialog = createEventDialog{}
+	m.clearDraft()
+}
+
+func (m *model) clearDraft() {
+	if m == nil {
+		return
+	}
+	m.draftActive = false
+	m.draftDay = time.Time{}
+	m.draftStartSlot = 0
+	m.draftEndSlot = 0
 }
 
 func (m model) renderNow() time.Time {

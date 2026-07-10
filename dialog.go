@@ -66,8 +66,7 @@ func (m model) updateCreateDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.createDialog.submitting {
 			return m, nil
 		}
-		m.showCreateDialog = false
-		m.createDialog = createEventDialog{}
+		m.closeCreateDialog()
 		return m, nil
 	case "tab":
 		return m, m.createDialog.moveFocus(1)
@@ -135,8 +134,7 @@ func (m model) submitOrAdvanceCreateDialog() (tea.Model, tea.Cmd) {
 		m.createDialog.submitting = true
 		return m, createEventCmd(input)
 	case dialogFocusCancel:
-		m.showCreateDialog = false
-		m.createDialog = createEventDialog{}
+		m.closeCreateDialog()
 		return m, nil
 	default:
 		return m, m.createDialog.moveFocus(1)

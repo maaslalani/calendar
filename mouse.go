@@ -60,6 +60,7 @@ func (m model) beginDrag(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	m.dragging = true
+	m.dragMoved = false
 	m.dragDay = day
 	m.dragStartSlot = slot
 	m.dragEndSlot = slot
@@ -70,6 +71,10 @@ func (m model) extendDrag(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if !m.dragging {
 		return m, nil
 	}
+
+	// Cell motion events are only emitted while a button is held, so any motion
+	// here marks the gesture as a real drag rather than a click.
+	m.dragMoved = true
 
 	geo, ok := m.calendarViewGeometry()
 	if !ok {
@@ -86,13 +91,26 @@ func (m model) finishDrag() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	moved := m.dragMoved
 	day := m.dragDay
 	startSlot := min(m.dragStartSlot, m.dragEndSlot)
 	endSlot := max(m.dragStartSlot, m.dragEndSlot)
 	m.dragging = false
+	m.dragMoved = false
 	m.dragDay = time.Time{}
 	m.dragStartSlot = 0
 	m.dragEndSlot = 0
+
+	// A click without any drag motion should not create an event; only an
+	// actual drag opens the create dialog.
+	if !moved {
+		return m, nil
+	}
+
+	m.draftActive = true
+	m.draftDay = day
+	m.draftStartSlot = startSlot
+	m.draftEndSlot = endSlot
 
 	return m.openCreateDialogForSelection(day, startSlot, endSlot)
 }
@@ -108,12 +126,18 @@ func (m model) openCreateDialogForSelection(day time.Time, startSlot, endSlot in
 }
 
 // renderData returns the calendar data to display, injecting the in-progress
-// drag selection so it previews as a provisional event.
+// drag selection so it previews as a provisional event. The same preview stays
+// visible as a draft while the create dialog is open so it is not hidden behind
+// the dialog.
 func (m model) renderData() calendarData {
-	if !m.dragging {
+	switch {
+	case m.dragging && m.dragMoved:
+		return m.data.withSelection(m.dragDay, min(m.dragStartSlot, m.dragEndSlot), max(m.dragStartSlot, m.dragEndSlot))
+	case m.showCreateDialog && m.draftActive:
+		return m.data.withSelection(m.draftDay, m.draftStartSlot, m.draftEndSlot)
+	default:
 		return m.data
 	}
-	return m.data.withSelection(m.dragDay, min(m.dragStartSlot, m.dragEndSlot), max(m.dragStartSlot, m.dragEndSlot))
 }
 
 func (m model) calendarViewGeometry() (calendarViewGeometry, bool) {

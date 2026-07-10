@@ -2573,6 +2573,49 @@ func TestMouseIgnoredWhileDialogOpen(t *testing.T) {
 	}
 }
 
+func TestMouseClickWithoutDragDoesNotCreateEvent(t *testing.T) {
+	loc := time.FixedZone("test", -8*60*60)
+	now := time.Date(2026, 3, 7, 15, 0, 0, 0, loc)
+	m := model{
+		width:  120,
+		height: 40,
+		data: calendarData{
+			sections:    buildDaySections(now, nil),
+			currentTime: now,
+		},
+	}
+
+	lines := strings.Split(m.View(), "\n")
+	clickY := lineIndexContaining(t, lines, "10:00 AM")
+	headerY := lineIndexContaining(t, lines, "Mar 7")
+	x := columnContaining(t, lines[headerY], "Mar 7")
+
+	updated, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: x, Y: clickY})
+	pressed := updated.(model)
+	if _, ok := provisionalEvent(pressed.renderData()); ok {
+		t.Fatal("expected no provisional event to preview before the mouse moves")
+	}
+
+	updated, cmd := pressed.Update(tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonNone, X: x, Y: clickY})
+	final := updated.(model)
+
+	if final.dragging {
+		t.Fatal("expected the click to clear the drag state")
+	}
+	if final.showCreateDialog {
+		t.Fatal("expected a click without drag to not open the create dialog")
+	}
+	if final.draftActive {
+		t.Fatal("expected a click without drag to leave no draft event")
+	}
+	if cmd != nil {
+		t.Fatal("expected no command from a click without drag")
+	}
+	if _, ok := provisionalEvent(final.renderData()); ok {
+		t.Fatal("expected no provisional event to render after a click")
+	}
+}
+
 func TestMouseDragOpensPrefilledDialog(t *testing.T) {
 	loc := time.FixedZone("test", -8*60*60)
 	now := time.Date(2026, 3, 7, 15, 0, 0, 0, loc)
@@ -2657,6 +2700,67 @@ func TestMouseDragUpwardNormalizesSelection(t *testing.T) {
 	if !beginningOfDay(final.createDialog.startDate).Equal(time.Date(2026, 3, 8, 0, 0, 0, 0, loc)) {
 		t.Fatalf("dialog start day = %s, want 2026-03-08 (Tomorrow column)", final.createDialog.startDate)
 	}
+}
+
+func TestMouseDragKeepsDraftEventBehindDialog(t *testing.T) {
+	loc := time.FixedZone("test", -8*60*60)
+	now := time.Date(2026, 3, 7, 15, 0, 0, 0, loc)
+	m := model{
+		width:  120,
+		height: 40,
+		data: calendarData{
+			sections:    buildDaySections(now, nil),
+			currentTime: now,
+		},
+	}
+
+	lines := strings.Split(m.View(), "\n")
+	startY := lineIndexContaining(t, lines, "10:00 AM")
+	endY := lineIndexContaining(t, lines, "11:00 AM")
+	headerY := lineIndexContaining(t, lines, "Mar 7")
+	x := columnContaining(t, lines[headerY], "Mar 7")
+
+	updated, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonLeft, X: x, Y: startY})
+	updated, _ = updated.(model).Update(tea.MouseMsg{Action: tea.MouseActionMotion, Button: tea.MouseButtonLeft, X: x, Y: endY})
+	updated, _ = updated.(model).Update(tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonNone, X: x, Y: endY})
+	final := updated.(model)
+
+	if !final.showCreateDialog {
+		t.Fatal("expected the create dialog to open after a drag")
+	}
+	if !final.draftActive {
+		t.Fatal("expected the drag to leave a draft event behind the dialog")
+	}
+
+	draftEvent, ok := provisionalEvent(final.renderData())
+	if !ok {
+		t.Fatal("expected the draft event to render while the dialog is open")
+	}
+	wantStart := time.Date(2026, 3, 7, 10, 0, 0, 0, loc)
+	wantEnd := time.Date(2026, 3, 7, 11, 30, 0, 0, loc)
+	if !draftEvent.StartDate.Equal(wantStart) || !draftEvent.EndDate.Equal(wantEnd) {
+		t.Fatalf("draft event = %s-%s, want %s-%s", draftEvent.StartDate, draftEvent.EndDate, wantStart, wantEnd)
+	}
+
+	closed, _ := final.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	dismissed := closed.(model)
+	if dismissed.draftActive {
+		t.Fatal("expected canceling the dialog to clear the draft event")
+	}
+	if _, ok := provisionalEvent(dismissed.renderData()); ok {
+		t.Fatal("expected no draft event to render after the dialog closes")
+	}
+}
+
+func provisionalEvent(data calendarData) (ical.Event, bool) {
+	for _, section := range data.sections {
+		for _, event := range section.events {
+			if event.Title == "New event" {
+				return event, true
+			}
+		}
+	}
+	return ical.Event{}, false
 }
 
 func lineIndexContaining(t *testing.T, lines []string, sub string) int {
