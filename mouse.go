@@ -150,7 +150,7 @@ func (m model) calendarViewGeometry() (calendarViewGeometry, bool) {
 		return calendarViewGeometry{}, false
 	}
 
-	sections, dates, ok := m.hitRenderSections(contentWidth, calendarHeight)
+	sections, dates, ok := m.hitRenderSections(contentWidth)
 	if !ok || len(dates) == 0 {
 		return calendarViewGeometry{}, false
 	}
@@ -166,19 +166,19 @@ func (m model) calendarViewGeometry() (calendarViewGeometry, bool) {
 	}, true
 }
 
-func (m model) hitRenderSections(contentWidth, calendarHeight int) (calendarRenderSections, []time.Time, bool) {
+func (m model) hitRenderSections(contentWidth int) (calendarRenderSections, []time.Time, bool) {
 	switch {
 	case m.err != nil:
 		return calendarRenderSections{}, nil, false
 	case m.loading:
 		viewDay := m.currentViewDay()
-		sections := buildLoadingCalendarRenderSections(viewDay, m.renderNow(), contentWidth, calendarHeight, calendarSlotWindow{})
+		sections := buildLoadingCalendarRenderSections(viewDay, m.renderNow(), contentWidth, calendarSlotWindow{})
 		return sections, sectionDatesFrom(buildLoadingSections(viewDay)), true
 	default:
 		if len(m.data.sections) == 0 {
 			return calendarRenderSections{}, nil, false
 		}
-		sections := buildCalendarRenderSections(m.data, contentWidth, calendarHeight, calendarSlotWindow{})
+		sections := buildCalendarRenderSections(m.data, contentWidth, calendarSlotWindow{})
 		return sections, sectionDatesFrom(m.data.sections), true
 	}
 }

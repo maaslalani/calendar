@@ -33,14 +33,14 @@ func renderLoadingCalendarLayoutForDayWithHeightAndScroll(viewDay, now time.Time
 }
 
 func renderLoadingCalendarLayoutForDayWithHeightAndScrollUsingWindow(viewDay, now time.Time, terminalWidth, terminalHeight, scrollOffset int, slotWindow calendarSlotWindow) string {
-	return renderCalendarRenderSections(buildLoadingCalendarRenderSections(viewDay, now, terminalWidth, terminalHeight, slotWindow), terminalHeight, scrollOffset)
+	return renderCalendarRenderSections(buildLoadingCalendarRenderSections(viewDay, now, terminalWidth, slotWindow), terminalHeight, scrollOffset)
 }
 
 func maxLoadingCalendarScroll(viewDay, now time.Time, terminalWidth, terminalHeight int, slotWindow calendarSlotWindow) int {
-	return maxCalendarRenderScrollOffset(buildLoadingCalendarRenderSections(viewDay, now, terminalWidth, terminalHeight, slotWindow), terminalHeight)
+	return maxCalendarRenderScrollOffset(buildLoadingCalendarRenderSections(viewDay, now, terminalWidth, slotWindow), terminalHeight)
 }
 
-func buildLoadingCalendarRenderSections(viewDay, now time.Time, terminalWidth, terminalHeight int, slotWindow calendarSlotWindow) calendarRenderSections {
+func buildLoadingCalendarRenderSections(viewDay, now time.Time, terminalWidth int, slotWindow calendarSlotWindow) calendarRenderSections {
 	if now.IsZero() {
 		now = time.Now()
 	}
@@ -53,7 +53,7 @@ func buildLoadingCalendarRenderSections(viewDay, now time.Time, terminalWidth, t
 	sections := buildLoadingSections(viewDay)
 	layout := newCalendarLayout(len(sections), terminalWidth)
 	allDayLines := make([][]string, len(sections))
-	window := effectiveLoadingSlotWindow(now, calendarFixedRowCount(allDayLines, false), terminalHeight, slotWindow)
+	window := effectiveCalendarSlotWindow(slotWindow)
 	windowStart, windowEnd := window.start, window.end
 	headerRows := renderSectionHeaderRows(sections, now, layout)
 	headerRows = appendAllDaySectionRows(headerRows, allDayLines, layout)
@@ -115,30 +115,31 @@ func renderCalendarLayoutWithHeightAndScrollUsingWindow(data calendarData, termi
 		return "No calendar days available."
 	}
 
-	return renderCalendarRenderSections(buildCalendarRenderSections(data, terminalWidth, terminalHeight, slotWindow), terminalHeight, scrollOffset)
+	return renderCalendarRenderSections(buildCalendarRenderSections(data, terminalWidth, slotWindow), terminalHeight, scrollOffset)
 }
 
 func maxCalendarLayoutScroll(data calendarData, terminalWidth, terminalHeight int, slotWindow calendarSlotWindow) int {
 	if len(data.sections) == 0 {
 		return 0
 	}
-	return maxCalendarRenderScrollOffset(buildCalendarRenderSections(data, terminalWidth, terminalHeight, slotWindow), terminalHeight)
+	return maxCalendarRenderScrollOffset(buildCalendarRenderSections(data, terminalWidth, slotWindow), terminalHeight)
 }
 
-func buildCalendarRenderSections(data calendarData, terminalWidth, terminalHeight int, slotWindow calendarSlotWindow) calendarRenderSections {
+func buildCalendarRenderSections(data calendarData, terminalWidth int, slotWindow calendarSlotWindow) calendarRenderSections {
 	layout := newCalendarLayout(len(data.sections), terminalWidth)
 	allDayLines := make([][]string, len(data.sections))
+	timedEvents := make([][]ical.Event, len(data.sections))
 
 	for i, section := range data.sections {
-		allDayEvents, _ := partitionDayEvents(section.events)
+		allDayEvents, sectionTimedEvents := partitionDayEvents(section.events)
 		allDayLines[i] = renderAllDayLines(allDayEvents, data.calendarColors, layout.sectionWidths[i])
+		timedEvents[i] = sectionTimedEvents
 	}
-	window := effectiveCalendarSlotWindow(data.sections, data.currentTime, calendarFixedRowCount(allDayLines, len(data.legend) > 0), terminalHeight, slotWindow)
+	window := effectiveCalendarSlotWindow(slotWindow)
 	windowStart, windowEnd := window.start, window.end
 	timedLines := make([][][]string, len(data.sections))
 	for i, section := range data.sections {
-		_, timedEvents := partitionDayEvents(section.events)
-		timedLines[i] = renderTimedLines(section.date, timedEvents, data.calendarColors, windowStart, windowEnd, layout.sectionWidths[i])
+		timedLines[i] = renderTimedLines(section.date, timedEvents[i], data.calendarColors, windowStart, windowEnd, layout.sectionWidths[i])
 	}
 
 	headerRows := renderSectionHeaderRows(data.sections, data.currentTime, layout)
@@ -154,15 +155,7 @@ func buildCalendarRenderSections(data calendarData, terminalWidth, terminalHeigh
 	}
 }
 
-func effectiveLoadingSlotWindow(now time.Time, fixedRows, terminalHeight int, slotWindow calendarSlotWindow) calendarSlotWindow {
-	if window, ok := normalizedCalendarSlotWindow(slotWindow); ok {
-		return window
-	}
-
-	return fullDaySlotWindow()
-}
-
-func effectiveCalendarSlotWindow(sections []daySection, now time.Time, fixedRows, terminalHeight int, slotWindow calendarSlotWindow) calendarSlotWindow {
+func effectiveCalendarSlotWindow(slotWindow calendarSlotWindow) calendarSlotWindow {
 	if window, ok := normalizedCalendarSlotWindow(slotWindow); ok {
 		return window
 	}
@@ -350,17 +343,16 @@ func allDayRegionRowCount(allDayLines [][]string) int {
 	return max(minAllDayBufferRows+1, allDaySectionLineCount(allDayLines))
 }
 
-func calendarFixedRowCount(allDayLines [][]string, hasLegend bool) int {
-	rows := 2 + allDayRegionRowCount(allDayLines)
-	if hasLegend {
-		rows += 2
-	}
-	return rows
-}
-
 func partitionDayEvents(events []ical.Event) ([]ical.Event, []ical.Event) {
-	allDay := make([]ical.Event, 0, len(events))
-	timed := make([]ical.Event, 0, len(events))
+	allDayCount := 0
+	for _, event := range events {
+		if event.AllDay {
+			allDayCount++
+		}
+	}
+
+	allDay := make([]ical.Event, 0, allDayCount)
+	timed := make([]ical.Event, 0, len(events)-allDayCount)
 
 	for _, event := range events {
 		if event.AllDay {
@@ -525,7 +517,7 @@ func renderCurrentTimeSectionLine(section daySection, now time.Time, calendarCol
 	return renderCurrentTimeActiveLine(active, calendarColors, layouts[active[0].cluster], lineStyle)
 }
 
-func renderCurrentTimeActiveLine(active []timedEventBlock, calendarColors map[string]string, layout timedEventLayout, lineStyle lipgloss.Style) string {
+func renderCurrentTimeActiveLine(active []*timedEventBlock, calendarColors map[string]string, layout timedEventLayout, lineStyle lipgloss.Style) string {
 	if len(layout.columnWidths) == 0 {
 		return ""
 	}

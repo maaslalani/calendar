@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -14,15 +15,16 @@ import (
 func renderTimedLines(day time.Time, events []ical.Event, calendarColors map[string]string, windowStart, windowEnd, dayWidth int) [][]string {
 	blocks := buildTimedEventBlocks(day, events)
 	layouts := buildTimedEventLayouts(blocks, calendarColors, dayWidth)
+	blocksBySlot := indexTimedEventBlocks(blocks, windowStart, windowEnd)
 
-	lines := make([][]string, windowEnd-windowStart)
-	for slot := windowStart; slot < windowEnd; slot++ {
-		active := activeBlocksAtSlot(blocks, slot)
+	lines := make([][]string, len(blocksBySlot))
+	for i, active := range blocksBySlot {
 		if len(active) == 0 {
 			continue
 		}
 
-		lines[slot-windowStart] = renderTimedBlockLines(active, slot, windowStart, windowEnd, calendarColors, layouts[active[0].cluster])
+		slot := windowStart + i
+		lines[i] = renderTimedBlockLines(active, slot, windowStart, windowEnd, calendarColors, layouts[active[0].cluster])
 	}
 
 	return lines
@@ -58,34 +60,58 @@ func buildTimedEventBlocks(day time.Time, events []ical.Event) []timedEventBlock
 	return blocks
 }
 
-func activeBlocksAtSlot(blocks []timedEventBlock, slot int) []timedEventBlock {
-	active := make([]timedEventBlock, 0, len(blocks))
+func indexTimedEventBlocks(blocks []timedEventBlock, windowStart, windowEnd int) [][]*timedEventBlock {
+	blocksBySlot := make([][]*timedEventBlock, max(0, windowEnd-windowStart))
+	ordered := make([]*timedEventBlock, len(blocks))
+	for i := range blocks {
+		ordered[i] = &blocks[i]
+	}
+	sortTimedEventBlockPointersByLayer(ordered)
 
-	for _, block := range blocks {
-		if block.startSlot <= slot && slot < block.endSlot {
-			active = append(active, block)
+	slotCounts := make([]int, len(blocksBySlot))
+	for _, block := range ordered {
+		start := max(block.startSlot, windowStart)
+		end := min(block.endSlot, windowEnd)
+		for slot := start; slot < end; slot++ {
+			slotCounts[slot-windowStart]++
+		}
+	}
+	for i, count := range slotCounts {
+		if count > 0 {
+			blocksBySlot[i] = make([]*timedEventBlock, 0, count)
 		}
 	}
 
-	sort.SliceStable(active, func(i, j int) bool {
-		if active[i].layer != active[j].layer {
-			return active[i].layer < active[j].layer
+	for _, block := range ordered {
+		start := max(block.startSlot, windowStart)
+		end := min(block.endSlot, windowEnd)
+		for slot := start; slot < end; slot++ {
+			blocksBySlot[slot-windowStart] = append(blocksBySlot[slot-windowStart], block)
 		}
-		if active[i].startSlot != active[j].startSlot {
-			return active[i].startSlot < active[j].startSlot
-		}
-		return displayEventTitle(active[i].event) < displayEventTitle(active[j].event)
-	})
+	}
 
-	return active
+	return blocksBySlot
 }
 
-func activeBlocksAtTime(day time.Time, blocks []timedEventBlock, now time.Time) []timedEventBlock {
-	active := make([]timedEventBlock, 0, len(blocks))
+func sortTimedEventBlockPointersByLayer(blocks []*timedEventBlock) {
+	sort.SliceStable(blocks, func(i, j int) bool {
+		if blocks[i].layer != blocks[j].layer {
+			return blocks[i].layer < blocks[j].layer
+		}
+		if blocks[i].startSlot != blocks[j].startSlot {
+			return blocks[i].startSlot < blocks[j].startSlot
+		}
+		return displayEventTitle(blocks[i].event) < displayEventTitle(blocks[j].event)
+	})
+}
+
+func activeBlocksAtTime(day time.Time, blocks []timedEventBlock, now time.Time) []*timedEventBlock {
+	active := make([]*timedEventBlock, 0, len(blocks))
 	dayStart := beginningOfDay(day)
 	dayEnd := dayStart.AddDate(0, 0, 1)
 
-	for _, block := range blocks {
+	for i := range blocks {
+		block := &blocks[i]
 		start := maxTime(block.event.StartDate, dayStart)
 		end := minTime(block.event.EndDate, dayEnd)
 		if !end.After(start) {
@@ -97,20 +123,11 @@ func activeBlocksAtTime(day time.Time, blocks []timedEventBlock, now time.Time) 
 		active = append(active, block)
 	}
 
-	sort.SliceStable(active, func(i, j int) bool {
-		if active[i].layer != active[j].layer {
-			return active[i].layer < active[j].layer
-		}
-		if active[i].startSlot != active[j].startSlot {
-			return active[i].startSlot < active[j].startSlot
-		}
-		return displayEventTitle(active[i].event) < displayEventTitle(active[j].event)
-	})
-
+	sortTimedEventBlockPointersByLayer(active)
 	return active
 }
 
-func renderTimedBlockLines(active []timedEventBlock, slot, windowStart, windowEnd int, calendarColors map[string]string, layout timedEventLayout) []string {
+func renderTimedBlockLines(active []*timedEventBlock, slot, windowStart, windowEnd int, calendarColors map[string]string, layout timedEventLayout) []string {
 	if len(active) == 0 {
 		return nil
 	}
@@ -138,7 +155,7 @@ func renderTimedBlockLines(active []timedEventBlock, slot, windowStart, windowEn
 	return []string{strings.Join(lineParts, layout.separator)}
 }
 
-func timedBlockTitleLine(block timedEventBlock, slot, windowStart, windowEnd int, accents []eventAccentSegment, backgroundColor string, width int) string {
+func timedBlockTitleLine(block *timedEventBlock, slot, windowStart, windowEnd int, accents []eventAccentSegment, backgroundColor string, width int) string {
 	if block.startSlot < windowStart {
 		return ""
 	}
@@ -327,9 +344,10 @@ func renderAccentPrefix(accents []eventAccentSegment, backgroundColor string) st
 }
 func buildTimedEventLayouts(blocks []timedEventBlock, calendarColors map[string]string, dayWidth int) map[int]timedEventLayout {
 	layouts := make(map[int]timedEventLayout)
-	blocksByCluster := make(map[int][]timedEventBlock)
+	blocksByCluster := make(map[int][]*timedEventBlock)
 
-	for _, block := range blocks {
+	for i := range blocks {
+		block := &blocks[i]
 		blocksByCluster[block.cluster] = append(blocksByCluster[block.cluster], block)
 	}
 
@@ -349,7 +367,7 @@ func buildTimedEventLayouts(blocks []timedEventBlock, calendarColors map[string]
 	return layouts
 }
 
-func timedEventColumnLayout(blocks []timedEventBlock, calendarColors map[string]string, columnCount, dayWidth int) ([]int, string) {
+func timedEventColumnLayout(blocks []*timedEventBlock, calendarColors map[string]string, columnCount, dayWidth int) ([]int, string) {
 	separatorWidth := 1
 	if columnCount <= 1 {
 		separatorWidth = 0
@@ -374,10 +392,10 @@ func timedEventColumnLayout(blocks []timedEventBlock, calendarColors map[string]
 
 	availableWidth := dayWidth - separatorWidth*(columnCount-1)
 	if sumWidths(minWidths) > availableWidth {
-		return evenlySplitWidths(availableWidth, columnCount), strings.Repeat(" ", separatorWidth)
+		return splitWidths(availableWidth, columnCount), strings.Repeat(" ", separatorWidth)
 	}
 
-	widths := slicesClone(minWidths)
+	widths := slices.Clone(minWidths)
 	extraWidth := availableWidth - sumWidths(widths)
 	for extraWidth > 0 {
 		progress := false
@@ -410,10 +428,6 @@ func timedEventColumnLayout(blocks []timedEventBlock, calendarColors map[string]
 	return widths, strings.Repeat(" ", separatorWidth)
 }
 
-func evenlySplitWidths(totalWidth, count int) []int {
-	return splitWidths(totalWidth, count)
-}
-
 func splitWidths(totalWidth, count int) []int {
 	if count <= 0 {
 		return nil
@@ -438,12 +452,6 @@ func sumWidths(widths []int) int {
 		total += width
 	}
 	return total
-}
-
-func slicesClone(values []int) []int {
-	cloned := make([]int, len(values))
-	copy(cloned, values)
-	return cloned
 }
 
 func assignTimedEventClusters(blocks []timedEventBlock) {

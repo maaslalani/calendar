@@ -2,11 +2,9 @@ package main
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
-	ical "github.com/BRO3886/go-eventkit/calendar"
 	"github.com/charmbracelet/bubbles/cursor"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -21,19 +19,8 @@ type currentTimeTickMsg time.Time
 
 type calendarRefreshTickMsg time.Time
 
-type watchCalendarReadyMsg struct {
-	changes <-chan struct{}
-	cancel  context.CancelFunc
-	err     error
-}
-
-type watchCalendarChangedMsg struct{}
-
-type watchCalendarStoppedMsg struct{}
-
 type createEventMsg struct {
-	event *ical.Event
-	err   error
+	err error
 }
 type model struct {
 	loading           bool
@@ -79,35 +66,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.showCreateDialog {
 			return m.updateCreateDialog(msg)
 		}
-		switch msg.String() {
-		case "ctrl+c", "q":
-			if m.watchCancel != nil {
-				m.watchCancel()
-				m.watchCancel = nil
-				m.watchChanges = nil
-			}
-			return m, tea.Quit
-		case "t":
-			m.viewDayOffset = 0
-			m.focusPending = true
-			now := m.referenceTime()
-			return m, loadCalendarCmd(m.currentViewDay(), now)
-		case "h":
-			m.viewDayOffset--
-			return m, loadCalendarCmd(m.currentViewDay(), m.referenceTime())
-		case "l":
-			m.viewDayOffset++
-			return m, loadCalendarCmd(m.currentViewDay(), m.referenceTime())
-		case "j", "down":
-			m.timedScrollOffset = min(m.timedScrollOffset+1, m.maxTimedScrollOffset())
-		case "k", "up":
-			m.timedScrollOffset = max(0, m.timedScrollOffset-1)
-		case "n":
-			m.showCreateDialog = true
-			var cmd tea.Cmd
-			m.createDialog, cmd = newCreateEventDialogForDay(m.currentViewDay(), m.referenceTime())
-			return m, cmd
-		}
+		return m.updateKey(msg)
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -122,13 +81,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyPendingFocus()
 		m.clampTimedScrollOffset()
 	case currentTimeTickMsg:
-		m.data.currentTime = time.Time(msg)
-		m.clampTimedScrollOffset()
+		m.setCurrentTime(time.Time(msg))
 		return m, currentTimeTickCmd(time.Time(msg))
 	case calendarRefreshTickMsg:
-		m.data.currentTime = time.Time(msg)
-		m.clampTimedScrollOffset()
-		return m, tea.Batch(loadCalendarCmd(m.currentViewDay(), time.Time(msg)), calendarRefreshTickCmdFunc())
+		m.setCurrentTime(time.Time(msg))
+		return m, tea.Batch(m.reloadCalendarCmd(), calendarRefreshTickCmdFunc())
 	case watchCalendarReadyMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -139,13 +96,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.watchCancel = msg.cancel
 		return m, waitForCalendarChangeCmd(msg.changes)
 	case watchCalendarChangedMsg:
-		return m, tea.Batch(loadCalendarCmd(m.currentViewDay(), m.referenceTime()), waitForCalendarChangeCmd(m.watchChanges))
+		return m, tea.Batch(m.reloadCalendarCmd(), waitForCalendarChangeCmd(m.watchChanges))
 	case watchCalendarStoppedMsg:
-		if m.watchCancel != nil {
-			m.watchCancel()
-			m.watchCancel = nil
-		}
-		m.watchChanges = nil
+		m.stopCalendarWatch()
 		return m, startCalendarWatchCmd()
 	case createEventMsg:
 		m.createDialog.submitting = false
@@ -156,11 +109,41 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.closeCreateDialog()
 		m.clampTimedScrollOffset()
-		return m, loadCalendarCmd(m.currentViewDay(), m.referenceTime())
+		return m, m.reloadCalendarCmd()
 	}
 
 	return m, nil
 }
+
+func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c", "q":
+		m.stopCalendarWatch()
+		return m, tea.Quit
+	case "t":
+		m.viewDayOffset = 0
+		m.focusPending = true
+		return m, m.reloadCalendarCmd()
+	case "h":
+		m.viewDayOffset--
+		return m, m.reloadCalendarCmd()
+	case "l":
+		m.viewDayOffset++
+		return m, m.reloadCalendarCmd()
+	case "j", "down":
+		m.timedScrollOffset = min(m.timedScrollOffset+1, m.maxTimedScrollOffset())
+	case "k", "up":
+		m.timedScrollOffset = max(0, m.timedScrollOffset-1)
+	case "n":
+		m.showCreateDialog = true
+		var cmd tea.Cmd
+		m.createDialog, cmd = newCreateEventDialogForDay(m.currentViewDay(), m.referenceTime())
+		return m, cmd
+	}
+
+	return m, nil
+}
+
 func (m model) View() string {
 	contentWidth := contentWidthForTerminal(m.width)
 	contentHeight := contentHeightForTerminal(m.height)
@@ -178,7 +161,10 @@ func (m model) View() string {
 
 func (m model) baseViewContent(contentWidth, contentHeight int) string {
 	footer := footerView(m.showCreateDialog, contentWidth)
-	calendarHeight := m.calendarViewportHeight(contentHeight)
+	calendarHeight := contentHeight
+	if footer != "" {
+		calendarHeight = shrinkContentHeight(calendarHeight, footer)
+	}
 
 	var b strings.Builder
 	switch {
@@ -230,6 +216,10 @@ func loadCalendarCmd(viewDay, now time.Time) tea.Cmd {
 	}
 }
 
+func (m model) reloadCalendarCmd() tea.Cmd {
+	return loadCalendarCmd(m.currentViewDay(), m.referenceTime())
+}
+
 func currentTimeTickCmd(now time.Time) tea.Cmd {
 	next := now.Truncate(currentTimeTickEvery).Add(currentTimeTickEvery)
 	return tea.Tick(time.Until(next), func(t time.Time) tea.Msg {
@@ -241,62 +231,6 @@ func calendarRefreshTickCmdFunc() tea.Cmd {
 	return tea.Tick(calendarRefreshEvery, func(t time.Time) tea.Msg {
 		return calendarRefreshTickMsg(t)
 	})
-}
-
-func startCalendarWatchCmd() tea.Cmd {
-	return func() tea.Msg {
-		client, err := ical.New()
-		if err != nil {
-			return watchCalendarReadyMsg{err: err}
-		}
-
-		changes, cancel, err := openCalendarWatch(client.WatchChanges, time.Sleep)
-		if err != nil {
-			return watchCalendarReadyMsg{err: err}
-		}
-
-		return watchCalendarReadyMsg{
-			changes: changes,
-			cancel:  cancel,
-		}
-	}
-}
-
-func openCalendarWatch(start func(context.Context) (<-chan struct{}, error), sleep func(time.Duration)) (<-chan struct{}, context.CancelFunc, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	for attempt := range watchStartRetries {
-		changes, err := start(ctx)
-		if err == nil {
-			return changes, cancel, nil
-		}
-		if !isWatchAlreadyActiveError(err) || attempt == watchStartRetries-1 {
-			cancel()
-			return nil, nil, err
-		}
-
-		sleep(watchRetryDelay * time.Duration(1<<attempt))
-	}
-
-	cancel()
-	return nil, nil, errors.New("calendar: failed to start watcher")
-}
-
-func isWatchAlreadyActiveError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "watcher already active")
-}
-
-func waitForCalendarChangeCmd(changes <-chan struct{}) tea.Cmd {
-	if changes == nil {
-		return nil
-	}
-
-	return func() tea.Msg {
-		if _, ok := <-changes; !ok {
-			return watchCalendarStoppedMsg{}
-		}
-		return watchCalendarChangedMsg{}
-	}
 }
 
 func contentWidthForTerminal(width int) int {
@@ -345,6 +279,11 @@ func (m model) referenceTime() time.Time {
 
 func (m model) currentViewDay() time.Time {
 	return beginningOfDay(m.referenceTime()).AddDate(0, 0, m.viewDayOffset)
+}
+
+func (m *model) setCurrentTime(now time.Time) {
+	m.data.currentTime = now
+	m.clampTimedScrollOffset()
 }
 
 func (m model) maxTimedScrollOffset() int {
