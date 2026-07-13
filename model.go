@@ -53,7 +53,11 @@ func initialModel() model {
 func (m model) Init() tea.Cmd {
 	now := time.Now()
 	viewDay := beginningOfDay(now).AddDate(0, 0, m.viewDayOffset)
-	return tea.Batch(loadCalendarCmd(viewDay, now), currentTimeTickCmd(now), calendarRefreshTickCmdFunc(), startCalendarWatchCmd())
+	cmds := []tea.Cmd{loadCalendarCmd(viewDay, now), currentTimeTickCmd(now), calendarRefreshTickCmdFunc()}
+	if !calendarDemoEnabled() {
+		cmds = append(cmds, startCalendarWatchCmd())
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -99,6 +103,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.reloadCalendarCmd(), waitForCalendarChangeCmd(m.watchChanges))
 	case watchCalendarStoppedMsg:
 		m.stopCalendarWatch()
+		if calendarDemoEnabled() {
+			return m, nil
+		}
 		return m, startCalendarWatchCmd()
 	case createEventMsg:
 		m.createDialog.submitting = false
@@ -135,6 +142,9 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		m.timedScrollOffset = max(0, m.timedScrollOffset-1)
 	case "n":
+		if calendarDemoEnabled() {
+			return m, nil
+		}
 		m.showCreateDialog = true
 		var cmd tea.Cmd
 		m.createDialog, cmd = newCreateEventDialogForDay(m.currentViewDay(), m.referenceTime())

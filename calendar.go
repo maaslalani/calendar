@@ -38,25 +38,33 @@ func loadCalendar(viewDay, now time.Time) (calendarData, error) {
 		viewDay = beginningOfDay(viewDay)
 	}
 
+	if calendarDemoEnabled() {
+		return loadDemoCalendar(viewDay, now), nil
+	}
+
 	client, err := ical.New()
 	if err != nil {
 		return calendarData{}, err
 	}
 
+	windowStart := viewDay.AddDate(0, 0, -1)
+	windowEnd := viewDay.AddDate(0, 0, 2)
+
 	calendars, err := client.Calendars()
 	if err != nil {
 		return calendarData{}, err
 	}
-	sortCalendars(calendars)
-
-	windowStart := viewDay.AddDate(0, 0, -1)
-	windowEnd := viewDay.AddDate(0, 0, 2)
 
 	events, err := client.Events(windowStart, windowEnd)
 	if err != nil {
 		return calendarData{}, err
 	}
 
+	return newCalendarData(viewDay, now, calendars, events), nil
+}
+
+func newCalendarData(viewDay, now time.Time, calendars []ical.Calendar, events []ical.Event) calendarData {
+	sortCalendars(calendars)
 	calendarColors, legend := buildCalendarDecorations(calendars, events)
 
 	return calendarData{
@@ -64,7 +72,7 @@ func loadCalendar(viewDay, now time.Time) (calendarData, error) {
 		calendarColors: calendarColors,
 		legend:         legend,
 		currentTime:    now,
-	}, nil
+	}
 }
 func buildDaySections(today time.Time, events []ical.Event) []daySection {
 	sections := []daySection{

@@ -32,6 +32,10 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if calendarDemoEnabled() {
+		return m, nil
+	}
+
 	switch msg.Action {
 	case tea.MouseActionPress:
 		return m.beginDrag(msg)

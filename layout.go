@@ -528,12 +528,30 @@ func renderCurrentTimeActiveLine(active []*timedEventBlock, calendarColors map[s
 	}
 
 	for _, block := range active {
-		backgroundColor := eventBackgroundColor(eventCalendarColor(block.event, calendarColors))
-		lineParts[block.layer] = lineStyle.Background(lipgloss.Color(backgroundColor)).Render(strings.Repeat("─", layout.columnWidths[block.layer]))
+		color := eventCalendarColor(block.event, calendarColors)
+		backgroundColor := eventBackgroundColor(color)
+		width := layout.columnWidths[block.layer]
+		if width <= 0 {
+			continue
+		}
+		junction := currentTimeEventJunction(block.accent)
+		lineParts[block.layer] = colorStyle(color).
+			Background(lipgloss.Color(backgroundColor)).
+			Render(junction) +
+			lineStyle.
+				Background(lipgloss.Color(backgroundColor)).
+				Render(strings.Repeat("─", max(0, width-lipgloss.Width(junction))))
 	}
 
 	separator := lineStyle.Render(strings.Repeat("─", lipgloss.Width(layout.separator)))
 	return strings.Join(lineParts, separator)
+}
+
+func currentTimeEventJunction(accent string) string {
+	if accent == eventAccent {
+		return "╂"
+	}
+	return "┼"
 }
 
 func currentTimeStyleForSection(section daySection, now time.Time) lipgloss.Style {

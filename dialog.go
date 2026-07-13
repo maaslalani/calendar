@@ -224,6 +224,12 @@ func (d createEventDialog) eventDuration() (time.Duration, error) {
 }
 
 func createEventCmd(input ical.CreateEventInput) tea.Cmd {
+	if calendarDemoEnabled() {
+		return func() tea.Msg {
+			return createEventMsg{err: errors.New("event creation is unavailable in demo mode")}
+		}
+	}
+
 	return func() tea.Msg {
 		client, err := ical.New()
 		if err != nil {

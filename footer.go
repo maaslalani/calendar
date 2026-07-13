@@ -14,6 +14,13 @@ var (
 		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 	}
 
+	demoKeys = []key.Binding{
+		key.NewBinding(key.WithKeys("h", "l"), key.WithHelp("h/l", "days")),
+		key.NewBinding(key.WithKeys("j", "k"), key.WithHelp("j/k", "scroll")),
+		key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "today")),
+		key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
+	}
+
 	dialogKeys = []key.Binding{
 		key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "fields")),
 		key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑↓", "adjust")),
@@ -31,8 +38,11 @@ func footerView(showDialog bool, width int) string {
 	h.Width = width
 
 	bindings := mainKeys
-	if showDialog {
+	switch {
+	case showDialog:
 		bindings = dialogKeys
+	case calendarDemoEnabled():
+		bindings = demoKeys
 	}
 	return h.ShortHelpView(bindings)
 }
