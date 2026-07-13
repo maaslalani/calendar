@@ -7,6 +7,7 @@ import (
 
 	ical "github.com/BRO3886/go-eventkit/calendar"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type calendarRenderSections struct {
@@ -139,7 +140,7 @@ func buildCalendarRenderSections(data calendarData, terminalWidth int, slotWindo
 	windowStart, windowEnd := window.start, window.end
 	timedLines := make([][][]string, len(data.sections))
 	for i, section := range data.sections {
-		timedLines[i] = renderTimedLines(section.date, timedEvents[i], data.calendarColors, windowStart, windowEnd, layout.sectionWidths[i])
+		timedLines[i] = renderTimedLinesAt(section.date, timedEvents[i], data.calendarColors, windowStart, windowEnd, layout.sectionWidths[i], data.currentTime)
 	}
 
 	headerRows := renderSectionHeaderRows(data.sections, data.currentTime, layout)
@@ -254,7 +255,7 @@ func renderTimedWindowRows(sections []daySection, now time.Time, calendarColors 
 	currentLineSlot, showCurrentLine := currentTimeMarkerSlot(now, windowStart, windowEnd)
 	for slot := windowStart; slot < windowEnd; slot++ {
 		if showCurrentLine && currentLineSlot == slot {
-			rows = append(rows, renderCurrentTimeRow(now, sections, calendarColors, layout))
+			rows = append(rows, renderCurrentTimeRowInWindow(now, sections, calendarColors, layout, windowStart, windowEnd))
 			slots = append(slots, slot)
 		}
 
@@ -288,7 +289,7 @@ func renderTimedWindowRows(sections []daySection, now time.Time, calendarColors 
 	}
 
 	if showCurrentLine && currentLineSlot == windowEnd {
-		rows = append(rows, renderCurrentTimeRow(now, sections, calendarColors, layout))
+		rows = append(rows, renderCurrentTimeRowInWindow(now, sections, calendarColors, layout, windowStart, windowEnd))
 		slots = append(slots, min(windowEnd, slotsPerDay-1))
 	}
 
@@ -477,13 +478,17 @@ func renderStyledRow(timeLabel string, cells []string, timeStyle lipgloss.Style,
 }
 
 func renderCurrentTimeRow(now time.Time, sections []daySection, calendarColors map[string]string, layout calendarLayout) string {
+	return renderCurrentTimeRowInWindow(now, sections, calendarColors, layout, 0, slotsPerDay)
+}
+
+func renderCurrentTimeRowInWindow(now time.Time, sections []daySection, calendarColors map[string]string, layout calendarLayout, windowStart, windowEnd int) string {
 	var b strings.Builder
 	b.WriteString(currentTimeAxisStyle.Render(now.Format("3:04 PM")))
 	b.WriteString(layout.separator)
 
 	connectorWidth := lipgloss.Width(layout.separator)
 	for i, section := range sections {
-		b.WriteString(renderCurrentTimeSectionLine(section, now, calendarColors, layout.sectionWidths[i]))
+		b.WriteString(renderCurrentTimeSectionLineInWindow(section, now, calendarColors, layout.sectionWidths[i], windowStart, windowEnd))
 		if i == len(sections)-1 {
 			continue
 		}
@@ -496,6 +501,10 @@ func renderCurrentTimeRow(now time.Time, sections []daySection, calendarColors m
 }
 
 func renderCurrentTimeSectionLine(section daySection, now time.Time, calendarColors map[string]string, width int) string {
+	return renderCurrentTimeSectionLineInWindow(section, now, calendarColors, width, 0, slotsPerDay)
+}
+
+func renderCurrentTimeSectionLineInWindow(section daySection, now time.Time, calendarColors map[string]string, width, windowStart, windowEnd int) string {
 	lineStyle := currentTimeStyleForSection(section, now)
 	line := strings.Repeat("─", width)
 	if width <= 0 {
@@ -508,16 +517,21 @@ func renderCurrentTimeSectionLine(section daySection, now time.Time, calendarCol
 		return lineStyle.Render(line)
 	}
 
+	titleMarker := newTimedTitleMarker(section.date, now, windowStart, windowEnd)
 	active := activeBlocksAtTime(section.date, blocks, wallClockTimeOnDay(section.date, now))
 	if len(active) == 0 {
 		return lineStyle.Render(line)
 	}
 
 	layouts := buildTimedEventLayouts(blocks, calendarColors, width)
-	return renderCurrentTimeActiveLine(active, calendarColors, layouts[active[0].cluster], lineStyle)
+	return renderCurrentTimeActiveLineWithTitles(active, calendarColors, layouts[active[0].cluster], lineStyle, titleMarker, windowStart, windowEnd)
 }
 
 func renderCurrentTimeActiveLine(active []*timedEventBlock, calendarColors map[string]string, layout timedEventLayout, lineStyle lipgloss.Style) string {
+	return renderCurrentTimeActiveLineWithTitles(active, calendarColors, layout, lineStyle, timedTitleMarker{}, 0, slotsPerDay)
+}
+
+func renderCurrentTimeActiveLineWithTitles(active []*timedEventBlock, calendarColors map[string]string, layout timedEventLayout, lineStyle lipgloss.Style, titleMarker timedTitleMarker, windowStart, windowEnd int) string {
 	if len(layout.columnWidths) == 0 {
 		return ""
 	}
@@ -534,17 +548,41 @@ func renderCurrentTimeActiveLine(active []*timedEventBlock, calendarColors map[s
 		if width <= 0 {
 			continue
 		}
-		junction := currentTimeEventJunction(block.accent)
-		lineParts[block.layer] = colorStyle(color).
-			Background(lipgloss.Color(backgroundColor)).
-			Render(junction) +
-			lineStyle.
-				Background(lipgloss.Color(backgroundColor)).
-				Render(strings.Repeat("─", max(0, width-lipgloss.Width(junction))))
+		accents := []eventAccentSegment{{accent: block.accent, color: color}}
+		title := timedBlockMarkerTitleLine(block, windowStart, windowEnd, accents, backgroundColor, width, titleMarker)
+		lineParts[block.layer] = renderCurrentTimeEventLine(title, block.accent, color, backgroundColor, width, lineStyle)
 	}
 
 	separator := lineStyle.Render(strings.Repeat("─", lipgloss.Width(layout.separator)))
 	return strings.Join(lineParts, separator)
+}
+
+func renderCurrentTimeEventLine(title, accent, color, backgroundColor string, width int, lineStyle lipgloss.Style) string {
+	if width <= 0 {
+		return ""
+	}
+
+	junction := currentTimeEventJunction(accent)
+	junctionWidth := lipgloss.Width(junction)
+	prefixWidth := min(width, lipgloss.Width(accent))
+	leadingWidth := max(0, prefixWidth-junctionWidth)
+	textWidth := max(0, width-junctionWidth-leadingWidth)
+	title = ansi.Truncate(title, textWidth, "…")
+	trailingWidth := max(0, textWidth-lipgloss.Width(title))
+	lineStyle = lineStyle.Background(lipgloss.Color(backgroundColor))
+
+	var b strings.Builder
+	b.WriteString(colorStyle(color).Background(lipgloss.Color(backgroundColor)).Render(junction))
+	b.WriteString(lineStyle.Render(strings.Repeat("─", leadingWidth)))
+	if title != "" {
+		b.WriteString(currentTimeEventTitleStyle(lineStyle).Render(title))
+	}
+	b.WriteString(lineStyle.Render(strings.Repeat("─", trailingWidth)))
+	return b.String()
+}
+
+func currentTimeEventTitleStyle(lineStyle lipgloss.Style) lipgloss.Style {
+	return lineStyle.Strikethrough(true).StrikethroughSpaces(true)
 }
 
 func currentTimeEventJunction(accent string) string {

@@ -23,6 +23,7 @@ const (
 	recurringMarker      = "⟳"
 	recurringMarkerPad   = 1
 	recurringMarkerScale = 75
+	eventTitleRightPad   = 1
 	eventAccent          = "┃ "
 	shortEventAccent     = "│ "
 	watchStartRetries    = 6
