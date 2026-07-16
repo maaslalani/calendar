@@ -28,21 +28,21 @@ func loadDemoCalendar(viewDay, now time.Time) calendarData {
 			Title:  calendarWorkTitle,
 			Type:   ical.CalendarTypeLocal,
 			Source: "Demo",
-			Color:  "#C4A7E7",
+			Color:  "#58A6FF",
 		},
 		{
 			ID:     calendarSocial,
 			Title:  calendarSocialTitle,
 			Type:   ical.CalendarTypeLocal,
 			Source: "Demo",
-			Color:  "#F6C177",
+			Color:  "#D29922",
 		},
 		{
 			ID:     calendarReminders,
 			Title:  calendarRemindersTitle,
 			Type:   ical.CalendarTypeLocal,
 			Source: "Demo",
-			Color:  "#9CCFD8",
+			Color:  "#3FB950",
 		},
 	}
 	return newCalendarData(viewDay, now, calendars, demoEvents(now))
