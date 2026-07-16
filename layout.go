@@ -575,14 +575,10 @@ func renderCurrentTimeEventLine(title, accent, color, backgroundColor string, wi
 	b.WriteString(colorStyle(color).Background(lipgloss.Color(backgroundColor)).Render(junction))
 	b.WriteString(lineStyle.Render(strings.Repeat("─", leadingWidth)))
 	if title != "" {
-		b.WriteString(currentTimeEventTitleStyle(lineStyle).Render(title))
+		b.WriteString(eventBackgroundStyle(backgroundColor).Render(title))
 	}
 	b.WriteString(lineStyle.Render(strings.Repeat("─", trailingWidth)))
 	return b.String()
-}
-
-func currentTimeEventTitleStyle(lineStyle lipgloss.Style) lipgloss.Style {
-	return lineStyle.Strikethrough(true).StrikethroughSpaces(true)
 }
 
 func currentTimeEventJunction(accent string) string {
