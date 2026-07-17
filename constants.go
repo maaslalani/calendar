@@ -29,3 +29,10 @@ const (
 	watchStartRetries    = 6
 	watchRetryDelay      = 10 * time.Millisecond
 )
+
+const (
+	scrollGestureGap          = 100 * time.Millisecond
+	scrollAxisThreshold       = 2
+	scrollAxisRatio           = 2
+	horizontalScrollThreshold = 4
+)

@@ -7,7 +7,7 @@ import (
 
 var (
 	mainKeys = []key.Binding{
-		key.NewBinding(key.WithKeys("h", "l"), key.WithHelp("h/l", "days")),
+		key.NewBinding(key.WithKeys("h", "left", "l", "right"), key.WithHelp("h/l", "days")),
 		key.NewBinding(key.WithKeys("j", "k"), key.WithHelp("j/k", "scroll")),
 		key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new")),
 		key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "today")),

@@ -5,8 +5,8 @@ Require go
 Set Shell "bash"
 Set FontSize 42
 Set Width 3600
-Set Height 2000
-Set Padding 64
+Set Height 2200
+Set Padding 50
 
 Hide
 Type "CALENDAR_DEMO=1 go run ."
@@ -14,14 +14,10 @@ Enter
 Sleep 2s
 Show
 
-Sleep 2s
-Type@20ms "jjjjjjjjjjj"
+Sleep 3s
+Right@1s 6
 Sleep 1s
-Type@20ms "kkkkkk"
-Sleep 1s
-Type@1s "llll"
-Sleep 1s
-Type@1s "hhhh"
+Left@1s 4
 Sleep 1s
 Type "n"
 Sleep 2s

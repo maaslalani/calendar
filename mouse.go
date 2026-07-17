@@ -7,6 +7,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+type scrollAxis int
+
+const (
+	scrollAxisNone scrollAxis = iota
+	scrollAxisHorizontal
+	scrollAxisVertical
+)
+
 // calendarViewGeometry captures the on-screen placement of the calendar grid so
 // mouse coordinates can be mapped back to a day and time slot.
 type calendarViewGeometry struct {
@@ -19,17 +27,23 @@ type calendarViewGeometry struct {
 }
 
 func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	return m.handleMouseAt(msg, time.Now())
+}
+
+func (m model) handleMouseAt(msg tea.MouseMsg, now time.Time) (tea.Model, tea.Cmd) {
 	if m.showCreateDialog {
 		return m, nil
 	}
 
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
-		m.timedScrollOffset = max(0, m.timedScrollOffset-1)
-		return m, nil
+		return m.handleScroll(scrollAxisVertical, -1, now)
 	case tea.MouseButtonWheelDown:
-		m.timedScrollOffset = min(m.timedScrollOffset+1, m.maxTimedScrollOffset())
-		return m, nil
+		return m.handleScroll(scrollAxisVertical, 1, now)
+	case tea.MouseButtonWheelLeft:
+		return m.handleScroll(scrollAxisHorizontal, -1, now)
+	case tea.MouseButtonWheelRight:
+		return m.handleScroll(scrollAxisHorizontal, 1, now)
 	}
 
 	switch msg.Action {
@@ -42,6 +56,90 @@ func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m model) handleScroll(axis scrollAxis, delta int, now time.Time) (tea.Model, tea.Cmd) {
+	newGesture := m.lastScrollAt.IsZero() ||
+		now.Sub(m.lastScrollAt) >= scrollGestureGap
+	if newGesture {
+		m.scrollAxis = scrollAxisNone
+		m.scrollIntentX = 0
+		m.scrollIntentY = 0
+		m.dayScrollProgress = 0
+	}
+
+	if m.scrollAxis != scrollAxisNone && m.scrollAxis != axis {
+		return m, nil
+	}
+	m.lastScrollAt = now
+
+	if m.scrollAxis == scrollAxisNone {
+		if axis == scrollAxisHorizontal {
+			m.scrollIntentX += delta
+		} else {
+			m.scrollIntentY += delta
+		}
+
+		m.scrollAxis = dominantScrollAxis(m.scrollIntentX, m.scrollIntentY)
+		if m.scrollAxis == scrollAxisNone {
+			return m, nil
+		}
+
+		if m.scrollAxis == scrollAxisHorizontal {
+			delta = m.scrollIntentX
+		} else {
+			delta = m.scrollIntentY
+		}
+		m.scrollIntentX = 0
+		m.scrollIntentY = 0
+	}
+
+	if m.scrollAxis == scrollAxisVertical {
+		m.timedScrollOffset = max(0, min(m.timedScrollOffset+delta, m.maxTimedScrollOffset()))
+		return m, nil
+	}
+
+	changedDirection := m.dayScrollProgress != 0 &&
+		(m.dayScrollProgress < 0) != (delta < 0)
+	if changedDirection {
+		m.dayScrollProgress = 0
+	}
+
+	m.dayScrollProgress += delta
+	if m.dayScrollProgress > -horizontalScrollThreshold &&
+		m.dayScrollProgress < horizontalScrollThreshold {
+		return m, nil
+	}
+
+	dayDelta := 0
+	for m.dayScrollProgress <= -horizontalScrollThreshold {
+		m.dayScrollProgress += horizontalScrollThreshold
+		dayDelta--
+	}
+	for m.dayScrollProgress >= horizontalScrollThreshold {
+		m.dayScrollProgress -= horizontalScrollThreshold
+		dayDelta++
+	}
+	m.viewDayOffset += dayDelta
+	return m, m.reloadCalendarCmd()
+}
+
+func dominantScrollAxis(horizontal, vertical int) scrollAxis {
+	if horizontal < 0 {
+		horizontal = -horizontal
+	}
+	if vertical < 0 {
+		vertical = -vertical
+	}
+
+	switch {
+	case horizontal >= scrollAxisThreshold && horizontal >= vertical*scrollAxisRatio:
+		return scrollAxisHorizontal
+	case vertical >= scrollAxisThreshold && vertical >= horizontal*scrollAxisRatio:
+		return scrollAxisVertical
+	default:
+		return scrollAxisNone
+	}
 }
 
 func (m model) beginDrag(msg tea.MouseMsg) (tea.Model, tea.Cmd) {

@@ -30,6 +30,11 @@ type model struct {
 	height            int
 	viewDayOffset     int
 	timedScrollOffset int
+	lastScrollAt      time.Time
+	scrollAxis        scrollAxis
+	scrollIntentX     int
+	scrollIntentY     int
+	dayScrollProgress int
 	focusPending      bool
 	watchChanges      <-chan struct{}
 	watchCancel       context.CancelFunc
@@ -135,10 +140,10 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.viewDayOffset = 0
 		m.focusPending = true
 		return m, m.reloadCalendarCmd()
-	case "h":
+	case "h", "left":
 		m.viewDayOffset--
 		return m, m.reloadCalendarCmd()
-	case "l":
+	case "l", "right":
 		m.viewDayOffset++
 		return m, m.reloadCalendarCmd()
 	case "j", "down":
