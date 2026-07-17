@@ -310,12 +310,31 @@ func relativeDayLabel(day, reference time.Time) string {
 		return "Today"
 	case 1:
 		return "Tomorrow"
-	default:
-		if diff < 0 {
-			return fmt.Sprintf("%d days ago", -diff)
-		}
-		return fmt.Sprintf("In %d days", diff)
 	}
+
+	distance := diff
+	if distance < 0 {
+		distance = -distance
+	}
+
+	value := distance
+	unit := "day"
+	switch {
+	case distance >= 365:
+		value = (distance + 182) / 365
+		unit = "year"
+	case distance >= 30:
+		value = (distance + 15) / 30
+		unit = "month"
+	}
+	if value != 1 {
+		unit += "s"
+	}
+
+	if diff < 0 {
+		return fmt.Sprintf("%d %s ago", value, unit)
+	}
+	return fmt.Sprintf("In %d %s", value, unit)
 }
 
 func localDateOrdinal(t time.Time) int {
