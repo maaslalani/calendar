@@ -46,7 +46,8 @@ func renderDialogSummarySection(dialog createEventDialog, width int) string {
 func renderDialogHeaderSection(dialog createEventDialog, width int) string {
 	titleInput := dialog.titleInput
 	titleWidth := max(12, width)
-	titleInput.Width = titleWidth
+	titleInput.Width = titleWidth - 1
+	titleInput.SetCursor(titleInput.Position())
 	return padRight(renderDialogTextInput(titleInput, titleWidth, dialog.focusIndex == dialogFocusTitle), width)
 }
 
