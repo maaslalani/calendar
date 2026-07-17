@@ -2,7 +2,7 @@
 
 Calendar in the terminal.
 
-<img src="demo.gif" width="1000" alt="calendar showing events in the terminal" />
+<img src="demo/demo.gif" width="1000" alt="calendar showing events in the terminal" />
 
 ### Usage
 
