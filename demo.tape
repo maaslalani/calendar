@@ -15,13 +15,13 @@ Sleep 2s
 Show
 
 Sleep 3s
-Right@1s 6
+Right@1s 4
 Sleep 1s
 Left@1s 4
 Sleep 1s
 Type "n"
 Sleep 2s
-Type@70ms "Calendar in your Terminal"
+Type "Calendar in your Terminal"
 Sleep 4s
 
 Hide
