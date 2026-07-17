@@ -28,7 +28,7 @@ func compositeLayer(base, overlay string, width, height int) string {
 
 	for i, overlayLine := range overlayLines {
 		target := y + i
-		if target < 0 || target >= len(baseLines) {
+		if target >= len(baseLines) {
 			continue
 		}
 
@@ -43,9 +43,6 @@ func compositeLayer(base, overlay string, width, height int) string {
 
 func canvasLines(content string, width, height int) []string {
 	lines := strings.Split(content, "\n")
-	if len(lines) == 0 {
-		lines = []string{""}
-	}
 
 	if height > 0 {
 		if len(lines) > height {

@@ -31,8 +31,7 @@ func footerView(showDialog bool, width int) string {
 	h.Width = width
 
 	bindings := mainKeys
-	switch {
-	case showDialog:
+	if showDialog {
 		bindings = dialogKeys
 	}
 	return h.ShortHelpView(bindings)

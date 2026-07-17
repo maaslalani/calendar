@@ -28,6 +28,7 @@ func sortCalendars(calendars []ical.Calendar) {
 		return calendars[i].ID < calendars[j].ID
 	})
 }
+
 func loadCalendar(viewDay, now time.Time) (calendarData, error) {
 	if now.IsZero() {
 		now = time.Now()
@@ -74,11 +75,13 @@ func newCalendarData(viewDay, now time.Time, calendars []ical.Calendar, events [
 		currentTime:    now,
 	}
 }
+
 func buildDaySections(today time.Time, events []ical.Event) []daySection {
+	today = beginningOfDay(today)
 	sections := []daySection{
-		{label: "Yesterday", date: beginningOfDay(today).AddDate(0, 0, -1)},
-		{label: "Today", date: beginningOfDay(today)},
-		{label: "Tomorrow", date: beginningOfDay(today).AddDate(0, 0, 1)},
+		{label: "Yesterday", date: today.AddDate(0, 0, -1)},
+		{label: "Today", date: today},
+		{label: "Tomorrow", date: today.AddDate(0, 0, 1)},
 	}
 
 	for i := range sections {
@@ -116,9 +119,7 @@ func eventOverlapsDay(event ical.Event, dayStart, dayEnd time.Time) bool {
 	return event.StartDate.Before(dayEnd) && event.EndDate.After(dayStart)
 }
 
-// withSelection returns a copy of the calendar data with a provisional "New
-// event" block covering the given slot range on the matching day. It is used to
-// preview an in-progress mouse drag without mutating the loaded data.
+// withSelection adds a provisional event without mutating the loaded data.
 func (d calendarData) withSelection(day time.Time, startSlot, endSlot int) calendarData {
 	if startSlot < 0 || endSlot < startSlot {
 		return d
@@ -148,15 +149,15 @@ func (d calendarData) withSelection(day time.Time, startSlot, endSlot int) calen
 	result.sections = sections
 	return result
 }
+
 func buildCalendarDecorations(calendars []ical.Calendar, events []ical.Event) (map[string]string, []calendarLegendItem) {
 	calendarByID := make(map[string]ical.Calendar, len(calendars))
 	calendarsByTitle := make(map[string][]ical.Calendar, len(calendars))
-	titleCounts := make(map[string]int, len(calendars))
+	titleCounts := calendarTitleCounts(calendars)
 
 	for _, calendar := range calendars {
 		calendarByID[calendar.ID] = calendar
 		calendarsByTitle[calendar.Title] = append(calendarsByTitle[calendar.Title], calendar)
-		titleCounts[calendar.Title]++
 	}
 
 	calendarColors := make(map[string]string, len(events)*2)
@@ -243,15 +244,15 @@ func legendKeyForEvent(event ical.Event) string {
 	if event.CalendarID != "" {
 		return "id:" + event.CalendarID
 	}
-	if strings.TrimSpace(event.Calendar) != "" {
-		return "title:" + strings.TrimSpace(event.Calendar)
+	if title := strings.TrimSpace(event.Calendar); title != "" {
+		return "title:" + title
 	}
 	return "title:unknown"
 }
 
 func fallbackCalendarLabel(event ical.Event) string {
-	if strings.TrimSpace(event.Calendar) != "" {
-		return strings.TrimSpace(event.Calendar)
+	if title := strings.TrimSpace(event.Calendar); title != "" {
+		return title
 	}
 	return "Unknown calendar"
 }

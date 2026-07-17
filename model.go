@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/cursor"
@@ -22,6 +21,7 @@ type calendarRefreshTickMsg time.Time
 type createEventMsg struct {
 	err error
 }
+
 type model struct {
 	loading           bool
 	data              calendarData
@@ -62,7 +62,7 @@ func initialModel() model {
 func (m model) Init() tea.Cmd {
 	now := time.Now()
 	viewDay := beginningOfDay(now).AddDate(0, 0, m.viewDayOffset)
-	cmds := []tea.Cmd{loadCalendarCmd(viewDay, now), currentTimeTickCmd(now), calendarRefreshTickCmdFunc()}
+	cmds := []tea.Cmd{loadCalendarCmd(viewDay, now), currentTimeTickCmd(now), calendarRefreshTickCmd()}
 	if !calendarDemoEnabled() {
 		cmds = append(cmds, startCalendarWatchCmd())
 	}
@@ -98,7 +98,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, currentTimeTickCmd(time.Time(msg))
 	case calendarRefreshTickMsg:
 		m.setCurrentTime(time.Time(msg))
-		return m, tea.Batch(m.reloadCalendarCmd(), calendarRefreshTickCmdFunc())
+		return m, tea.Batch(m.reloadCalendarCmd(), calendarRefreshTickCmd())
 	case watchCalendarReadyMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -172,7 +172,7 @@ func (m model) View() string {
 			contentHeight,
 		)
 	}
-	return renderScreenWithHeight(content, m.width, m.height)
+	return renderScreen(content, m.width, m.height)
 }
 
 func (m model) baseViewContent(contentWidth, contentHeight int) string {
@@ -182,21 +182,20 @@ func (m model) baseViewContent(contentWidth, contentHeight int) string {
 		calendarHeight = shrinkContentHeight(calendarHeight, footer)
 	}
 
-	var b strings.Builder
+	var content string
 	switch {
 	case m.loading:
 		now := m.data.currentTime
 		if now.IsZero() {
 			now = time.Now()
 		}
-		b.WriteString(renderLoadingCalendarLayoutForDayWithHeightAndScroll(m.currentViewDay(), now, contentWidth, calendarHeight, m.timedScrollOffset))
+		content = renderLoadingCalendarLayout(m.currentViewDay(), now, contentWidth, calendarHeight, m.timedScrollOffset)
 	case m.err != nil:
-		b.WriteString(friendlyError(m.err))
+		content = friendlyError(m.err)
 	default:
-		b.WriteString(renderCalendarLayoutWithHeightAndScroll(m.renderData(), contentWidth, calendarHeight, m.timedScrollOffset))
+		content = renderCalendarLayout(m.renderData(), contentWidth, calendarHeight, m.timedScrollOffset)
 	}
 
-	content := b.String()
 	if footer != "" {
 		content += "\n\n" + footer
 	}
@@ -243,39 +242,21 @@ func currentTimeTickCmd(now time.Time) tea.Cmd {
 	})
 }
 
-func calendarRefreshTickCmdFunc() tea.Cmd {
+func calendarRefreshTickCmd() tea.Cmd {
 	return tea.Tick(calendarRefreshEvery, func(t time.Time) tea.Msg {
 		return calendarRefreshTickMsg(t)
 	})
 }
 
 func contentWidthForTerminal(width int) int {
-	if width <= 0 {
-		return 0
-	}
-
-	contentWidth := width - screenPaddingX*2
-	if contentWidth < 0 {
-		return 0
-	}
-
-	return contentWidth
+	return max(0, width-screenPaddingX*2)
 }
 
 func contentHeightForTerminal(height int) int {
-	if height <= 0 {
-		return 0
-	}
-
-	contentHeight := height - screenPaddingY*2
-	if contentHeight < 0 {
-		return 0
-	}
-
-	return contentHeight
+	return max(0, height-screenPaddingY*2)
 }
 
-func renderScreenWithHeight(content string, width, height int) string {
+func renderScreen(content string, width, height int) string {
 	style := screenStyle
 	if width > 0 {
 		style = style.Width(width)
@@ -318,37 +299,25 @@ func (m model) maxTimedScrollOffset() int {
 		if now.IsZero() {
 			now = time.Now()
 		}
-		return maxLoadingCalendarScroll(m.currentViewDay(), now, contentWidth, contentHeight, calendarSlotWindow{})
+		return maxLoadingCalendarScroll(m.currentViewDay(), now, contentWidth, contentHeight)
 	case m.err != nil:
 		return 0
 	default:
-		return maxCalendarLayoutScroll(m.data, contentWidth, contentHeight, calendarSlotWindow{})
+		return maxCalendarLayoutScroll(m.data, contentWidth, contentHeight)
 	}
 }
 
 func (m *model) clampTimedScrollOffset() {
-	if m == nil {
-		return
-	}
-	m.timedScrollOffset = min(m.timedScrollOffset, m.maxTimedScrollOffset())
-	if m.timedScrollOffset < 0 {
-		m.timedScrollOffset = 0
-	}
+	m.timedScrollOffset = max(0, min(m.timedScrollOffset, m.maxTimedScrollOffset()))
 }
 
 func (m *model) closeCreateDialog() {
-	if m == nil {
-		return
-	}
 	m.showCreateDialog = false
 	m.createDialog = createEventDialog{}
 	m.clearDraft()
 }
 
 func (m *model) clearDraft() {
-	if m == nil {
-		return
-	}
 	m.draftActive = false
 	m.draftDay = time.Time{}
 	m.draftStartSlot = 0
@@ -364,11 +333,9 @@ func (m model) renderNow() time.Time {
 
 func (m model) focusStartSlot(now time.Time) int {
 	if m.loading || len(m.data.sections) == 0 {
-		start, _ := loadingSlotWindow(now)
-		return start
+		return loadingStartSlot(now)
 	}
-	start, _ := visibleSlotWindow(m.data.sections)
-	return start
+	return visibleStartSlot(m.data.sections)
 }
 
 func (m model) focusScrollOffset() int {
@@ -382,7 +349,7 @@ func (m model) focusScrollOffset() int {
 }
 
 func (m *model) applyPendingFocus() {
-	if m == nil || !m.focusPending {
+	if !m.focusPending {
 		return
 	}
 	if m.calendarViewportHeight(contentHeightForTerminal(m.height)) <= 0 {

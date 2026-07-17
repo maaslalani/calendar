@@ -104,10 +104,6 @@ func (m model) submitOrAdvanceCreateDialog() (tea.Model, tea.Cmd) {
 	}
 }
 
-func newCreateEventDialog(now time.Time) (createEventDialog, tea.Cmd) {
-	return newCreateEventDialogForDay(now, now)
-}
-
 func newCreateEventDialogForDay(day, reference time.Time) (createEventDialog, tea.Cmd) {
 	base := reference
 	if base.IsZero() {
@@ -122,9 +118,6 @@ func newCreateEventDialogForDay(day, reference time.Time) (createEventDialog, te
 	return newCreateEventDialogAt(start, 30)
 }
 
-// newCreateEventDialogAt builds a create dialog pre-filled with an explicit
-// start time and duration in minutes. It backs both the keyboard ("n") and the
-// mouse drag-to-create entry points.
 func newCreateEventDialogAt(start time.Time, durationMinutes int) (createEventDialog, tea.Cmd) {
 	if start.IsZero() {
 		start = nextQuarterHour(time.Now())
@@ -134,10 +127,10 @@ func newCreateEventDialogAt(start time.Time, durationMinutes int) (createEventDi
 	}
 
 	dialog := createEventDialog{
-		titleInput:    newDialogTextInput("Title", "", 24),
+		titleInput:    newDialogTextInput("Title", 24),
 		startDate:     beginningOfDay(start),
-		hourInput:     newDialogNumberInput(start.Hour(), 0, 23, 1, 4, formatDialogClockValue),
-		minuteInput:   newDialogNumberInput(start.Minute(), 0, 45, dialogMinuteStep, 4, formatDialogClockValue),
+		hourInput:     newDialogNumberInput(start.Hour(), 0, 23, 1, 4, formatTwoDigitNumber),
+		minuteInput:   newDialogNumberInput(start.Minute(), 0, 45, dialogMinuteStep, 4, formatTwoDigitNumber),
 		durationInput: newDialogNumberInput(durationMinutes, dialogMinuteStep, -1, dialogMinuteStep, 4, nil),
 		focusIndex:    dialogFocusTitle,
 	}
@@ -145,14 +138,11 @@ func newCreateEventDialogAt(start time.Time, durationMinutes int) (createEventDi
 	return dialog, dialog.syncFocus()
 }
 
-func newDialogTextInput(placeholder, value string, width int) textinput.Model {
+func newDialogTextInput(placeholder string, width int) textinput.Model {
 	input := textinput.New()
 	input.Placeholder = placeholder
 	input.Prompt = ""
 	input.Width = width
-	if value != "" {
-		input.SetValue(value)
-	}
 	return input
 }
 
@@ -318,7 +308,7 @@ func (i *dialogNumberInput) increment(delta int) {
 	i.value = next
 }
 
-func formatDialogClockValue(value int) string {
+func formatTwoDigitNumber(value int) string {
 	return fmt.Sprintf("%02d", value)
 }
 
@@ -638,9 +628,9 @@ func renderCreateEventDialog(dialog createEventDialog, width, height int) string
 func renderDialogSummarySection(dialog createEventDialog, width int) string {
 	summaryText := dialogScheduleSummary(dialog)
 	if width <= 0 {
-		return dialogSectionStyle.Render(dialogTitleStyle.Render(summaryText))
+		return dialogTitleStyle.Render(summaryText)
 	}
-	return dialogSectionStyle.Render(dialogTitleStyle.Width(width).Align(lipgloss.Center).Render(summaryText))
+	return dialogTitleStyle.Width(width).Align(lipgloss.Center).Render(summaryText)
 }
 
 func renderDialogHeaderSection(dialog createEventDialog, width int) string {
@@ -661,7 +651,7 @@ func renderDialogDateSection(dialog createEventDialog, width int) string {
 		dialogInlineTextStyle.Render("/"),
 		renderDialogNumberInput(yearInput, dialog.numericInputDisplay(dialogFocusYear, yearInput.displayValue(), ""), dialog.focusIndex == dialogFocusYear),
 	)
-	return dialogSectionStyle.Render(renderDialogLabeledField("Date", dateControl, width))
+	return renderDialogLabeledField("Date", dateControl, width)
 }
 
 func renderDialogScheduleSection(dialog createEventDialog, width int) string {
@@ -672,10 +662,10 @@ func renderDialogScheduleSection(dialog createEventDialog, width int) string {
 		renderDialogNumberInput(dialog.minuteInput, dialog.numericInputDisplay(dialogFocusMinute, dialog.minuteInput.displayValue(), ""), dialog.focusIndex == dialogFocusMinute),
 	)
 	durationControl := renderDialogDurationInput(dialog.durationInput, dialog.numericInputDisplay(dialogFocusDuration, fmt.Sprintf("%dm", dialog.durationInput.value), "m"), dialog.focusIndex == dialogFocusDuration)
-	return dialogSectionStyle.Render(strings.Join([]string{
+	return strings.Join([]string{
 		renderDialogLabeledField("Time", timeControl, width),
 		renderDialogLabeledField("Duration", durationControl, width),
-	}, "\n\n"))
+	}, "\n\n")
 }
 
 func renderDialogSplitRow(left, right string, width int) string {
@@ -706,7 +696,7 @@ func (d createEventDialog) dateInputs() (dialogNumberInput, dialogNumberInput, d
 		startDay = beginningOfDay(time.Now())
 	}
 	monthInput := newDialogNumberInput(int(startDay.Month()), 1, 12, 1, 4, formatDialogMonthValue)
-	dayInput := newDialogNumberInput(startDay.Day(), 1, daysInMonth(startDay.Year(), startDay.Month()), 1, 4, formatDialogClockValue)
+	dayInput := newDialogNumberInput(startDay.Day(), 1, daysInMonth(startDay.Year(), startDay.Month()), 1, 4, formatTwoDigitNumber)
 	yearInput := newDialogNumberInput(startDay.Year(), 1, -1, 1, 6, formatDialogYearValue)
 	return monthInput, dayInput, yearInput
 }
@@ -748,15 +738,12 @@ func renderDialogTextInput(input textinput.Model, width int, focused bool) strin
 	return padRight(ansi.Truncate(display, width, ""), width)
 }
 
-func renderDialogFieldLabel(label string) string {
-	return dialogFieldLabelStyle.Render(label)
-}
-
 func renderDialogLabeledField(label, control string, width int) string {
+	label = dialogFieldLabelStyle.Render(label)
 	if width <= 0 {
-		width = max(lipgloss.Width(renderDialogFieldLabel(label)), lipgloss.Width(control))
+		width = max(lipgloss.Width(label), lipgloss.Width(control))
 	}
-	return renderDialogSplitRow(renderDialogFieldLabel(label), control, width)
+	return renderDialogSplitRow(label, control, width)
 }
 
 func renderDialogNumberInput(input dialogNumberInput, display string, focused bool) string {
@@ -765,9 +752,6 @@ func renderDialogNumberInput(input dialogNumberInput, display string, focused bo
 		style = dialogFocusedInputStyle
 	}
 
-	if display == "" {
-		display = input.displayValue()
-	}
 	return style.Width(max(input.width, lipgloss.Width(display)+style.GetHorizontalFrameSize())).Align(lipgloss.Center).Render(display)
 }
 
@@ -777,9 +761,6 @@ func renderDialogDurationInput(input dialogNumberInput, display string, focused 
 		style = dialogFocusedInputStyle
 	}
 
-	if display == "" {
-		display = fmt.Sprintf("%dm", input.value)
-	}
 	return style.Width(max(input.width+1, lipgloss.Width(display)+style.GetHorizontalFrameSize())).Align(lipgloss.Center).Render(display)
 }
 
@@ -789,13 +770,13 @@ func renderDialogButtons(dialog createEventDialog, width int) string {
 		submitLabel = "Creating…"
 	}
 
-	submitStyle := dialogPrimaryButtonStyle
-	cancelStyle := dialogSecondaryButtonStyle
+	submitStyle := dialogButtonStyle
+	cancelStyle := dialogButtonStyle
 	if dialog.focusIndex == dialogFocusSubmit {
-		submitStyle = dialogFocusedPrimaryButtonStyle
+		submitStyle = dialogFocusedButtonStyle
 	}
 	if dialog.focusIndex == dialogFocusCancel {
-		cancelStyle = dialogFocusedSecondaryButtonStyle
+		cancelStyle = dialogFocusedButtonStyle
 	}
 
 	buttonRowStyle := lipgloss.NewStyle().Width(width).Align(lipgloss.Right)

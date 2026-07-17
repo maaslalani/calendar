@@ -15,8 +15,7 @@ const (
 	scrollAxisVertical
 )
 
-// calendarViewGeometry captures the on-screen placement of the calendar grid so
-// mouse coordinates can be mapped back to a day and time slot.
+// calendarViewGeometry maps screen coordinates to calendar cells.
 type calendarViewGeometry struct {
 	headerRows    int
 	sectionDates  []time.Time
@@ -27,14 +26,11 @@ type calendarViewGeometry struct {
 }
 
 func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	return m.handleMouseAt(msg, time.Now())
-}
-
-func (m model) handleMouseAt(msg tea.MouseMsg, now time.Time) (tea.Model, tea.Cmd) {
 	if m.showCreateDialog {
 		return m, nil
 	}
 
+	now := time.Now()
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
 		return m.handleScroll(scrollAxisVertical, -1, now)
@@ -223,10 +219,7 @@ func (m model) openCreateDialogForSelection(day time.Time, startSlot, endSlot in
 	return m, cmd
 }
 
-// renderData returns the calendar data to display, injecting the in-progress
-// drag selection so it previews as a provisional event. The same preview stays
-// visible as a draft while the create dialog is open so it is not hidden behind
-// the dialog.
+// renderData includes the active drag or dialog draft in the visible calendar.
 func (m model) renderData() calendarData {
 	switch {
 	case m.dragging && m.dragMoved:
@@ -270,13 +263,13 @@ func (m model) hitRenderSections(contentWidth int) (calendarRenderSections, []ti
 		return calendarRenderSections{}, nil, false
 	case m.loading:
 		viewDay := m.currentViewDay()
-		sections := buildLoadingCalendarRenderSections(viewDay, m.renderNow(), contentWidth, calendarSlotWindow{})
+		sections := buildLoadingCalendarRenderSections(viewDay, m.renderNow(), contentWidth)
 		return sections, sectionDatesFrom(buildLoadingSections(viewDay)), true
 	default:
 		if len(m.data.sections) == 0 {
 			return calendarRenderSections{}, nil, false
 		}
-		sections := buildCalendarRenderSections(m.data, contentWidth, calendarSlotWindow{})
+		sections := buildCalendarRenderSections(m.data, contentWidth)
 		return sections, sectionDatesFrom(m.data.sections), true
 	}
 }

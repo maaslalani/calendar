@@ -15,7 +15,6 @@ var (
 	currentTimeEdgeColor = lipgloss.Color(scaleHexColor(string(currentTimeColor), 40, 0, "#662626"))
 	dialogMutedColor     = lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#8A94A6"}
 	dialogBorderColor    = lipgloss.AdaptiveColor{Light: "#94A3B8", Dark: "#3F4A59"}
-	dialogSurfaceColor   = lipgloss.AdaptiveColor{Light: "#E2E8F0", Dark: "#10161E"}
 	dialogTitleColor     = lipgloss.AdaptiveColor{Light: "#0F172A", Dark: "#F8FAFC"}
 	dialogButtonColor    = lipgloss.AdaptiveColor{Light: "#4B5563", Dark: "#374151"}
 	dialogButtonText     = lipgloss.AdaptiveColor{Light: "#F8FAFC", Dark: "#F8FAFC"}
@@ -34,17 +33,13 @@ var (
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(dialogBorderColor).
 				Padding(dialogPaddingY, dialogPaddingX)
-	dialogSectionStyle = lipgloss.NewStyle()
-	dialogTitleStyle   = lipgloss.NewStyle().
+	dialogTitleStyle = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(dialogTitleColor)
 	dialogFieldLabelStyle = lipgloss.NewStyle().
 				Foreground(dialogMutedColor)
 	dialogInlineTextStyle = lipgloss.NewStyle().
 				Foreground(dialogMutedColor)
-	dialogAccessoryChipStyle = lipgloss.NewStyle().
-					Foreground(dialogTitleColor).
-					Padding(0, 1)
 	dialogInputStyle = lipgloss.NewStyle().
 				Foreground(dialogTitleColor).
 				Padding(0, 1)
@@ -52,28 +47,17 @@ var (
 				Foreground(currentTimeColor).
 				Bold(true).
 				Padding(0, 1)
-	dialogPrimaryButtonStyle = lipgloss.NewStyle().
-					Background(dialogButtonColor).
-					Foreground(dialogButtonText).
-					Bold(true).
-					Padding(0, 2)
-	dialogFocusedPrimaryButtonStyle = lipgloss.NewStyle().
+	dialogButtonStyle = lipgloss.NewStyle().
+				Background(dialogButtonColor).
+				Foreground(dialogButtonText).
+				Bold(true).
+				Padding(0, 2)
+	dialogFocusedButtonStyle = lipgloss.NewStyle().
 					Background(currentTimeColor).
 					Foreground(dialogButtonText).
 					Underline(true).
 					Bold(true).
 					Padding(0, 2)
-	dialogSecondaryButtonStyle = lipgloss.NewStyle().
-					Background(dialogButtonColor).
-					Foreground(dialogButtonText).
-					Bold(true).
-					Padding(0, 2)
-	dialogFocusedSecondaryButtonStyle = lipgloss.NewStyle().
-						Background(currentTimeColor).
-						Foreground(dialogButtonText).
-						Underline(true).
-						Bold(true).
-						Padding(0, 2)
 	dialogErrorStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#FCA5A5")).
 				BorderLeft(true).
@@ -93,10 +77,6 @@ var (
 )
 
 func colorStyle(color string) lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(color))
-}
-
-func eventForegroundStyle(color string) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 }
 

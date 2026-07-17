@@ -12,24 +12,20 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func renderTimedLines(day time.Time, events []ical.Event, calendarColors map[string]string, windowStart, windowEnd, dayWidth int) [][]string {
-	return renderTimedLinesAt(day, events, calendarColors, windowStart, windowEnd, dayWidth, time.Time{})
-}
-
-func renderTimedLinesAt(day time.Time, events []ical.Event, calendarColors map[string]string, windowStart, windowEnd, dayWidth int, now time.Time) [][]string {
+func renderTimedLines(day time.Time, events []ical.Event, calendarColors map[string]string, windowStart, windowEnd, dayWidth int, now time.Time) []string {
 	blocks := buildTimedEventBlocks(day, events)
 	layouts := buildTimedEventLayouts(blocks, calendarColors, dayWidth)
 	blocksBySlot := indexTimedEventBlocks(blocks, windowStart, windowEnd)
 	titleMarker := newTimedTitleMarker(day, now, windowStart, windowEnd)
 
-	lines := make([][]string, len(blocksBySlot))
+	lines := make([]string, len(blocksBySlot))
 	for i, active := range blocksBySlot {
 		if len(active) == 0 {
 			continue
 		}
 
 		slot := windowStart + i
-		lines[i] = renderTimedBlockLinesWithMarker(active, slot, windowStart, windowEnd, calendarColors, layouts[active[0].cluster], titleMarker)
+		lines[i] = renderTimedBlockLine(active, slot, windowStart, windowEnd, calendarColors, layouts[active[0].cluster], titleMarker)
 	}
 
 	return lines
@@ -72,20 +68,6 @@ func indexTimedEventBlocks(blocks []timedEventBlock, windowStart, windowEnd int)
 		ordered[i] = &blocks[i]
 	}
 	sortTimedEventBlockPointersByLayer(ordered)
-
-	slotCounts := make([]int, len(blocksBySlot))
-	for _, block := range ordered {
-		start := max(block.startSlot, windowStart)
-		end := min(block.endSlot, windowEnd)
-		for slot := start; slot < end; slot++ {
-			slotCounts[slot-windowStart]++
-		}
-	}
-	for i, count := range slotCounts {
-		if count > 0 {
-			blocksBySlot[i] = make([]*timedEventBlock, 0, count)
-		}
-	}
 
 	for _, block := range ordered {
 		start := max(block.startSlot, windowStart)
@@ -132,13 +114,9 @@ func activeBlocksAtTime(day time.Time, blocks []timedEventBlock, now time.Time) 
 	return active
 }
 
-func renderTimedBlockLines(active []*timedEventBlock, slot, windowStart, windowEnd int, calendarColors map[string]string, layout timedEventLayout) []string {
-	return renderTimedBlockLinesWithMarker(active, slot, windowStart, windowEnd, calendarColors, layout, timedTitleMarker{})
-}
-
-func renderTimedBlockLinesWithMarker(active []*timedEventBlock, slot, windowStart, windowEnd int, calendarColors map[string]string, layout timedEventLayout, titleMarker timedTitleMarker) []string {
+func renderTimedBlockLine(active []*timedEventBlock, slot, windowStart, windowEnd int, calendarColors map[string]string, layout timedEventLayout, titleMarker timedTitleMarker) string {
 	if len(active) == 0 {
-		return nil
+		return ""
 	}
 
 	lineParts := make([]string, len(layout.columnWidths))
@@ -148,27 +126,23 @@ func renderTimedBlockLinesWithMarker(active []*timedEventBlock, slot, windowStar
 
 	for _, block := range active {
 		color := eventCalendarColor(block.event, calendarColors)
-		accents := []eventAccentSegment{{accent: block.accent, color: color}}
 		backgroundColor := eventBackgroundColor(color)
 		width := layout.columnWidths[block.layer]
+		prefixWidth := lipgloss.Width(renderEventAccent(block.accent, color, backgroundColor))
 
 		marker := ""
 		if slot == max(block.startSlot, windowStart) {
 			marker = displayEventMarker(block.event)
 		}
 
-		title := timedBlockTitleLineWithMarker(block, slot, windowStart, windowEnd, accents, backgroundColor, width, titleMarker)
-		lineParts[block.layer] = renderEventLine(title, marker, color, accents, width, backgroundColor)
+		title := timedBlockTitleLine(block, slot, windowStart, windowEnd, prefixWidth, width, titleMarker)
+		lineParts[block.layer] = renderEventLine(title, marker, block.accent, color, backgroundColor, width)
 	}
 
-	return []string{strings.Join(lineParts, layout.separator)}
+	return strings.Join(lineParts, layout.separator)
 }
 
-func timedBlockTitleLine(block *timedEventBlock, slot, windowStart, windowEnd int, accents []eventAccentSegment, backgroundColor string, width int) string {
-	return timedBlockTitleLineWithMarker(block, slot, windowStart, windowEnd, accents, backgroundColor, width, timedTitleMarker{})
-}
-
-func timedBlockTitleLineWithMarker(block *timedEventBlock, slot, windowStart, windowEnd int, accents []eventAccentSegment, backgroundColor string, width int, titleMarker timedTitleMarker) string {
+func timedBlockTitleLine(block *timedEventBlock, slot, windowStart, windowEnd, prefixWidth, width int, titleMarker timedTitleMarker) string {
 	if block.startSlot < windowStart {
 		return ""
 	}
@@ -180,19 +154,19 @@ func timedBlockTitleLineWithMarker(block *timedEventBlock, slot, windowStart, wi
 		}
 	}
 
-	lines := timedBlockTitleLines(block, windowEnd, accents, backgroundColor, width)
+	lines := timedBlockTitleLines(block, windowEnd, prefixWidth, width)
 	if lineIndex < 0 || lineIndex >= len(lines) {
 		return ""
 	}
 	return lines[lineIndex]
 }
 
-func timedBlockMarkerTitleLine(block *timedEventBlock, windowStart, windowEnd int, accents []eventAccentSegment, backgroundColor string, width int, titleMarker timedTitleMarker) string {
+func timedBlockMarkerTitleLine(block *timedEventBlock, windowStart, windowEnd, prefixWidth, width int, titleMarker timedTitleMarker) string {
 	if block.startSlot < windowStart || !titleMarker.carriesTitle(block) {
 		return ""
 	}
 
-	lines := timedBlockTitleLines(block, windowEnd, accents, backgroundColor, width)
+	lines := timedBlockTitleLines(block, windowEnd, prefixWidth, width)
 	lineIndex := titleMarker.slot - block.startSlot
 	if lineIndex < 0 || lineIndex >= len(lines) {
 		return ""
@@ -200,8 +174,7 @@ func timedBlockMarkerTitleLine(block *timedEventBlock, windowStart, windowEnd in
 	return lines[lineIndex]
 }
 
-func timedBlockTitleLines(block *timedEventBlock, windowEnd int, accents []eventAccentSegment, backgroundColor string, width int) []string {
-	prefixWidth := lipgloss.Width(renderAccentPrefix(accents, backgroundColor))
+func timedBlockTitleLines(block *timedEventBlock, windowEnd, prefixWidth, width int) []string {
 	wrapWidth := width - prefixWidth - eventMarkerWidth(displayEventMarker(block.event)) - eventTitleRightPad
 	maxLines := min(block.endSlot, windowEnd) - block.startSlot
 	return wrapEventTitle(displayEventTitle(block.event), wrapWidth, maxLines)
@@ -250,12 +223,12 @@ func wrapEventTitle(title string, width, maxLines int) []string {
 	return lines[:maxLines]
 }
 
-func renderEventSummaryLine(title, marker, color string, width int) string {
+func renderEventSummaryLine(title, color string, width int) string {
 	if width <= 0 {
 		return ""
 	}
 
-	return eventForegroundStyle(color).Render(renderEventBody(title, marker, color, "", width, true))
+	return colorStyle(color).Render(renderEventBody(title, "", color, "", width, true))
 }
 
 func renderAllDayMoreLine(hidden, width int) string {
@@ -266,9 +239,8 @@ func renderAllDayMoreLine(hidden, width int) string {
 	return allDayMoreStyle.Render(renderEventBody(fmt.Sprintf("+%d more", hidden), "", "", "", width, true))
 }
 
-func visibleSlotWindow(sections []daySection) (int, int) {
+func visibleStartSlot(sections []daySection) int {
 	minSlot := slotsPerDay
-	maxSlot := 0
 
 	for _, section := range sections {
 		for _, event := range section.events {
@@ -276,21 +248,20 @@ func visibleSlotWindow(sections []daySection) (int, int) {
 				continue
 			}
 
-			startSlot, endSlot, ok := eventSlotRange(section.date, event)
+			startSlot, _, ok := eventSlotRange(section.date, event)
 			if !ok {
 				continue
 			}
-
 			minSlot = min(minSlot, startSlot)
-			maxSlot = max(maxSlot, endSlot)
+			minSlot = min(minSlot, startSlot)
 		}
 	}
 
 	if minSlot == slotsPerDay {
-		return defaultWindowFrom, defaultWindowTo
+		return defaultWindowFrom
 	}
 
-	return max(0, minSlot-2), min(slotsPerDay, maxSlot+2)
+	return max(0, minSlot-2)
 }
 
 func eventSlotRange(day time.Time, event ical.Event) (int, int, bool) {
@@ -325,12 +296,12 @@ func timelineLabel(slot int) string {
 	return slotTime.Format("3:04 PM")
 }
 
-func renderEventLine(text, marker, color string, accents []eventAccentSegment, width int, backgroundColor string) string {
+func renderEventLine(text, marker, accent, color, backgroundColor string, width int) string {
 	if width <= 0 {
 		return ""
 	}
 
-	prefix := renderAccentPrefix(accents, backgroundColor)
+	prefix := renderEventAccent(accent, color, backgroundColor)
 	prefixWidth := lipgloss.Width(prefix)
 	if prefixWidth >= width {
 		return ansi.Truncate(prefix, width, "")
@@ -396,13 +367,10 @@ func eventMarkerWidth(marker string) int {
 	return recurringMarkerPad + lipgloss.Width(marker)
 }
 
-func renderAccentPrefix(accents []eventAccentSegment, backgroundColor string) string {
-	var b strings.Builder
-	for _, accent := range accents {
-		b.WriteString(colorStyle(accent.color).Background(lipgloss.Color(backgroundColor)).Render(accent.accent))
-	}
-	return b.String()
+func renderEventAccent(accent, color, backgroundColor string) string {
+	return colorStyle(color).Background(lipgloss.Color(backgroundColor)).Render(accent)
 }
+
 func buildTimedEventLayouts(blocks []timedEventBlock, calendarColors map[string]string, dayWidth int) map[int]timedEventLayout {
 	layouts := make(map[int]timedEventLayout)
 	blocksByCluster := make(map[int][]*timedEventBlock)
@@ -439,10 +407,7 @@ func timedEventColumnLayout(blocks []*timedEventBlock, calendarColors map[string
 	for _, block := range blocks {
 		layer := block.layer
 		color := eventCalendarColor(block.event, calendarColors)
-		prefixWidth := lipgloss.Width(renderAccentPrefix([]eventAccentSegment{{
-			accent: block.accent,
-			color:  color,
-		}}, eventBackgroundColor(color)))
+		prefixWidth := lipgloss.Width(renderEventAccent(block.accent, color, eventBackgroundColor(color)))
 		minWidths[layer] = max(minWidths[layer], prefixWidth+eventMarkerWidth(displayEventMarker(block.event)))
 		desiredWidths[layer] = max(desiredWidths[layer], prefixWidth+eventDisplayWidth(block.event))
 	}

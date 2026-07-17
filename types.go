@@ -34,11 +34,6 @@ type timedEventBlock struct {
 	cluster   int
 }
 
-type eventAccentSegment struct {
-	accent string
-	color  string
-}
-
 type timedEventLayout struct {
 	columnWidths []int
 	separator    string
@@ -47,9 +42,4 @@ type timedEventLayout struct {
 type calendarLayout struct {
 	sectionWidths []int
 	separator     string
-}
-
-type calendarSlotWindow struct {
-	start int
-	end   int
 }
