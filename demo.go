@@ -21,7 +21,12 @@ func calendarDemoEnabled() bool {
 	return os.Getenv(calendarDemoEnv) != ""
 }
 
+func demoCurrentTime(now time.Time) time.Time {
+	return time.Date(now.Year(), now.Month(), now.Day(), 15, 16, 0, 0, now.Location())
+}
+
 func loadDemoCalendar(viewDay, now time.Time) calendarData {
+	now = demoCurrentTime(now)
 	calendars := []ical.Calendar{
 		{
 			ID:     calendarWork,

@@ -47,7 +47,11 @@ type model struct {
 }
 
 func initialModel() model {
-	return model{loading: true, focusPending: true}
+	m := model{loading: true, focusPending: true}
+	if calendarDemoEnabled() {
+		m.data.currentTime = demoCurrentTime(time.Now())
+	}
+	return m
 }
 
 func (m model) Init() tea.Cmd {
@@ -289,6 +293,9 @@ func (m model) currentViewDay() time.Time {
 }
 
 func (m *model) setCurrentTime(now time.Time) {
+	if calendarDemoEnabled() {
+		now = demoCurrentTime(now)
+	}
 	m.data.currentTime = now
 	m.clampTimedScrollOffset()
 }
