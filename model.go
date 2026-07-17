@@ -142,9 +142,6 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "k", "up":
 		m.timedScrollOffset = max(0, m.timedScrollOffset-1)
 	case "n":
-		if calendarDemoEnabled() {
-			return m, nil
-		}
 		m.showCreateDialog = true
 		var cmd tea.Cmd
 		m.createDialog, cmd = newCreateEventDialogForDay(m.currentViewDay(), m.referenceTime())
