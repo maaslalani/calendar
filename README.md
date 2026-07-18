@@ -29,7 +29,28 @@ Or download a binary from the [releases](https://github.com/maaslalani/calendar/
 > Not Implemented
 
 Interact with your calendar as a file system.
-See [0001-calfs.md](0001-calfs.md) for the design.
+See [`0001-calfs.md`](0001-calfs.md) for the design.
+
+```
+.
+└── 2026
+    └── 01
+        ├── 01
+        │   └── Meeting
+        │       ├── description
+        │       ├── invited
+        │       │   ├── alice@example.com
+        │       │   ├── bob@example.com
+        │       │   └── carol@example.com
+        │       ├── start -> 8:00AM
+        │       └── end -> 10:00AM
+        ├── 02
+        ├── 03
+        ├── 04
+        │   ├── Event
+        │   └── Event
+        └── 05
+```
 
 ## License
 
