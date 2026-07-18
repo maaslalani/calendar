@@ -23,6 +23,12 @@ go install github.com/maaslalani/calendar@main
 
 Or download a binary from the [releases](https://github.com/maaslalani/calendar/releases).
 
+### EventKit
+
+`calendar` reads your events directly from Apple's native
+[EventKit](https://developer.apple.com/documentation/eventkit) framework, so it
+shows the same calendars as Calendar.app.
+
 ## Calendar File System
 
 > [!WARNING]
