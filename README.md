@@ -23,6 +23,14 @@ go install github.com/maaslalani/calendar@main
 
 Or download a binary from the [releases](https://github.com/maaslalani/calendar/releases).
 
+## Calendar File System
+
+> [!WARNING]
+> Not Implemented
+
+Interact with your calendar as a file system.
+See [0001-calfs.md](0001-calfs.md) for the design.
+
 ## License
 
 [MIT](https://github.com/maaslalani/calendar/blob/main/LICENSE)
