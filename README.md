@@ -27,7 +27,9 @@ Or download a binary from the [releases](https://github.com/maaslalani/calendar/
 
 `calendar` reads your events directly from Apple's native
 [EventKit](https://developer.apple.com/documentation/eventkit) framework, so it
-shows the same calendars as Calendar.app.
+shows the same calendars as Calendar.app.[^go-eventkit]
+
+[^go-eventkit]: EventKit access is powered by [`go-eventkit`](https://github.com/BRO3886/go-eventkit).
 
 ## Calendar File System
 
