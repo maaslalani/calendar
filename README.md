@@ -10,6 +10,24 @@ Calendar in the terminal.
 cal
 ```
 
+View a day's events (pretty-printed in a terminal, plain when piped; force
+either with `--pretty` / `--plain`):
+
+```bash
+cal view [today]
+cal view tomorrow
+cal view yesterday
+cal view 2026-08-01
+```
+
+Add an event:
+
+```bash
+cal add "Lunch with Will" --time 12:30 --duration 45m
+cal add Standup --date tomorrow --time 9:15 --duration 15m
+cal add Launch --date 2026-08-01 --all-day
+```
+
 > [!NOTE]
 > On first launch, allow your terminal to access Calendars in System Settings.
 

@@ -20,7 +20,8 @@ const (
 	defaultWindowTo      = 40
 	currentTimeTickEvery = time.Minute
 	calendarRefreshEvery = 5 * time.Second
-	recurringMarker      = "⟳"
+	recurringMarker      = "*"
+	legendSwatch         = "●"
 	recurringMarkerPad   = 1
 	recurringMarkerScale = 75
 	eventTitleRightPad   = 1

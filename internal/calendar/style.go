@@ -13,6 +13,7 @@ var (
 	timelineActiveColor  = lipgloss.AdaptiveColor{Light: "#A8A8A8", Dark: "#6A6A6A"}
 	currentTimeColor     = lipgloss.Color("#FF5F5F")
 	currentTimeEdgeColor = lipgloss.Color(scaleHexColor(string(currentTimeColor), 40, 0, "#662626"))
+	successColor         = lipgloss.AdaptiveColor{Light: "#059669", Dark: "#34D399"}
 	dialogMutedColor     = lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#8A94A6"}
 	dialogBorderColor    = lipgloss.AdaptiveColor{Light: "#94A3B8", Dark: "#3F4A59"}
 	dialogTitleColor     = lipgloss.AdaptiveColor{Light: "#0F172A", Dark: "#F8FAFC"}
@@ -63,6 +64,8 @@ var (
 				BorderLeft(true).
 				BorderForeground(lipgloss.Color("#F87171")).
 				PaddingLeft(1)
+	successMarkStyle = lipgloss.NewStyle().Foreground(successColor)
+	primaryTextStyle = lipgloss.NewStyle().Foreground(dialogTitleColor)
 
 	fallbackCalendarColors = []string{
 		"#60A5FA",
@@ -85,7 +88,7 @@ func eventBackgroundStyle(color string) lipgloss.Style {
 }
 
 func renderLegendSwatch(color string) string {
-	return colorStyle(color).Render("●")
+	return colorStyle(color).Render(legendSwatch)
 }
 
 func eventBackgroundColor(color string) string {
