@@ -17,7 +17,7 @@ import (
 
 // ViewCommand returns the `cal view` subcommand for listing a day's events.
 func ViewCommand() *cobra.Command {
-	var plain, pretty bool
+	var color string
 
 	cmd := &cobra.Command{
 		Use:   "view [date]",
@@ -25,13 +25,19 @@ func ViewCommand() *cobra.Command {
 		Long: "View a day's events.\n\n" +
 			`The date can be "today", "tomorrow", "yesterday", or YYYY-MM-DD, and` + "\n" +
 			"defaults to today.\n\n" +
-			"Output is pretty-printed when attached to a terminal and plain when piped;\n" +
-			"use --pretty or --plain to force either.",
+			"Output is styled when attached to a terminal and plain when piped;\n" +
+			"use --color always or --color never to force either.",
 		Example: `  cal view
   cal view tomorrow
   cal view 2026-08-01`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			isTTY := term.IsTerminal(os.Stdout.Fd())
+			colored, err := resolveColorMode(color, isTTY)
+			if err != nil {
+				return err
+			}
+
 			dateArg := "today"
 			if len(args) == 1 {
 				dateArg = args[0]
@@ -53,14 +59,13 @@ func ViewCommand() *cobra.Command {
 				return fmt.Errorf("could not load events for %s", day.Format(time.DateOnly))
 			}
 
-			isTTY := term.IsTerminal(os.Stdout.Fd())
-			if plain || (!pretty && !isTTY) {
+			if !colored {
 				fmt.Fprint(cmd.OutOrStdout(), renderDayPlain(section))
 				return nil
 			}
 
 			if !isTTY {
-				// Keep styles when pretty output is forced into a pipe.
+				// Keep styles when colored output is forced into a pipe.
 				lipgloss.SetColorProfile(termenv.TrueColor)
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), renderDayPretty(section, data.calendarColors, data.currentTime))
@@ -68,10 +73,22 @@ func ViewCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&plain, "plain", false, "plain, script-friendly output (default when piped)")
-	cmd.Flags().BoolVar(&pretty, "pretty", false, "styled output (default when attached to a terminal)")
-	cmd.MarkFlagsMutuallyExclusive("plain", "pretty")
+	cmd.Flags().StringVar(&color, "color", "auto", `colorize output: "auto", "always", or "never"`)
 	return cmd
+}
+
+// resolveColorMode reports whether output should be colored for the given
+// --color value: "always", "never", or "auto" (color only when on a terminal).
+func resolveColorMode(mode string, isTTY bool) (bool, error) {
+	switch mode {
+	case "auto":
+		return isTTY, nil
+	case "always":
+		return true, nil
+	case "never":
+		return false, nil
+	}
+	return false, fmt.Errorf("invalid --color %q (use \"auto\", \"always\", or \"never\")", mode)
 }
 
 func sectionForDay(data calendarData, day time.Time) (daySection, bool) {

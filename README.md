@@ -10,8 +10,8 @@ Calendar in the terminal.
 cal
 ```
 
-View a day's events (pretty-printed in a terminal, plain when piped; force
-either with `--pretty` / `--plain`):
+View a day's events (styled in a terminal, plain when piped; force either
+with `--color always` / `--color never`):
 
 ```bash
 cal view [today]
