@@ -1,4 +1,5 @@
 Output demo/demo.gif
+Output demo/demo.mp4
 
 Require go
 
