@@ -239,31 +239,6 @@ func renderAllDayMoreLine(hidden, width int) string {
 	return allDayMoreStyle.Render(renderEventBody(fmt.Sprintf("+%d more", hidden), "", "", "", width, true))
 }
 
-func visibleStartSlot(sections []daySection) int {
-	minSlot := slotsPerDay
-
-	for _, section := range sections {
-		for _, event := range section.events {
-			if event.AllDay {
-				continue
-			}
-
-			startSlot, _, ok := eventSlotRange(section.date, event)
-			if !ok {
-				continue
-			}
-			minSlot = min(minSlot, startSlot)
-			minSlot = min(minSlot, startSlot)
-		}
-	}
-
-	if minSlot == slotsPerDay {
-		return defaultWindowFrom
-	}
-
-	return max(0, minSlot-2)
-}
-
 func eventSlotRange(day time.Time, event ical.Event) (int, int, bool) {
 	if event.AllDay {
 		return 0, 0, false

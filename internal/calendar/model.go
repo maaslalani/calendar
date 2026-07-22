@@ -331,21 +331,21 @@ func (m model) renderNow() time.Time {
 	return m.data.currentTime
 }
 
-func (m model) focusStartSlot(now time.Time) int {
-	if m.loading || len(m.data.sections) == 0 {
-		return loadingStartSlot(now)
-	}
-	return visibleStartSlot(m.data.sections)
-}
-
 func (m model) focusScrollOffset() int {
-	now := m.renderNow()
-	focusStart := m.focusStartSlot(now)
-	offset := focusStart
-	if slot, ok := currentTimeMarkerSlot(now, 0, slotsPerDay); ok && slot < focusStart {
-		offset++
+	contentWidth := contentWidthForTerminal(m.width)
+	contentHeight := m.calendarViewportHeight(contentHeightForTerminal(m.height))
+	if contentHeight <= 0 {
+		return 0
 	}
-	return max(0, min(offset, m.maxTimedScrollOffset()))
+
+	switch {
+	case m.loading:
+		return focusLoadingCalendarScroll(m.currentViewDay(), m.renderNow(), contentWidth, contentHeight)
+	case m.err != nil:
+		return 0
+	default:
+		return focusCalendarLayoutScroll(m.data, contentWidth, contentHeight)
+	}
 }
 
 func (m *model) applyPendingFocus() {

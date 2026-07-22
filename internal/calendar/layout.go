@@ -25,6 +25,10 @@ func maxLoadingCalendarScroll(viewDay, now time.Time, terminalWidth, terminalHei
 	return maxCalendarRenderScrollOffset(buildLoadingCalendarRenderSections(viewDay, now, terminalWidth), terminalHeight)
 }
 
+func focusLoadingCalendarScroll(viewDay, now time.Time, terminalWidth, terminalHeight int) int {
+	return focusCalendarRenderScrollOffset(buildLoadingCalendarRenderSections(viewDay, now, terminalWidth), terminalHeight, now)
+}
+
 func buildLoadingCalendarRenderSections(viewDay, now time.Time, terminalWidth int) calendarRenderSections {
 	if now.IsZero() {
 		now = time.Now()
@@ -58,31 +62,6 @@ func buildLoadingSections(viewDay time.Time) []daySection {
 	return buildDaySections(beginningOfDay(viewDay), nil)
 }
 
-func loadingStartSlot(now time.Time) int {
-	windowSize := defaultWindowTo - defaultWindowFrom
-	if windowSize <= 0 {
-		return defaultWindowFrom
-	}
-
-	currentSlot, showCurrentLine := currentTimeMarkerSlot(now, 0, slotsPerDay)
-	if !showCurrentLine || (defaultWindowFrom <= currentSlot && currentSlot <= defaultWindowTo) {
-		return defaultWindowFrom
-	}
-
-	windowStart := currentSlot - windowSize/2
-	windowEnd := windowStart + windowSize
-	if windowStart < 0 {
-		windowStart = 0
-		windowEnd = min(slotsPerDay, windowSize)
-	}
-	if windowEnd > slotsPerDay {
-		windowEnd = slotsPerDay
-		windowStart = max(0, windowEnd-windowSize)
-	}
-
-	return windowStart
-}
-
 func renderCalendarLayout(data calendarData, terminalWidth, terminalHeight, scrollOffset int) string {
 	if len(data.sections) == 0 {
 		return "No calendar days available."
@@ -96,6 +75,13 @@ func maxCalendarLayoutScroll(data calendarData, terminalWidth, terminalHeight in
 		return 0
 	}
 	return maxCalendarRenderScrollOffset(buildCalendarRenderSections(data, terminalWidth), terminalHeight)
+}
+
+func focusCalendarLayoutScroll(data calendarData, terminalWidth, terminalHeight int) int {
+	if len(data.sections) == 0 {
+		return 0
+	}
+	return focusCalendarRenderScrollOffset(buildCalendarRenderSections(data, terminalWidth), terminalHeight, data.currentTime)
 }
 
 func buildCalendarRenderSections(data calendarData, terminalWidth int) calendarRenderSections {
@@ -192,6 +178,20 @@ func maxCalendarRenderScrollOffset(sections calendarRenderSections, terminalHeig
 		return 0
 	}
 	return len(sections.timedRows) - viewportRows
+}
+
+// focusCalendarRenderScrollOffset returns the scroll offset that centers the
+// current-time row in the timed viewport. Because the current-time row is
+// inserted just before its slot's row, its row index equals its slot value.
+func focusCalendarRenderScrollOffset(sections calendarRenderSections, terminalHeight int, now time.Time) int {
+	maxScroll := maxCalendarRenderScrollOffset(sections, terminalHeight)
+	currentRow, visible := currentTimeMarkerSlot(now, 0, slotsPerDay)
+	if !visible {
+		return min(defaultWindowFrom, maxScroll)
+	}
+
+	viewportRows := timedViewportRowCount(sections, terminalHeight)
+	return max(0, min(currentRow-max(0, viewportRows-1)/2, maxScroll))
 }
 
 func renderTimedWindowRows(sections []daySection, now time.Time, calendarColors map[string]string, layout calendarLayout, windowStart, windowEnd int, timedLines [][]string) ([]string, []int) {

@@ -17,7 +17,6 @@ const (
 	slotDuration         = 30 * time.Minute
 	slotsPerDay          = int((24 * time.Hour) / slotDuration)
 	defaultWindowFrom    = 16
-	defaultWindowTo      = 40
 	currentTimeTickEvery = time.Minute
 	calendarRefreshEvery = 5 * time.Second
 	recurringMarker      = "*"
