@@ -36,7 +36,7 @@ cal add Launch --date 2026-08-01 --all-day
 Install with Go:
 
 ```
-go install github.com/maaslalani/calendar@main
+go install github.com/maaslalani/calendar@latest
 ```
 
 Or download a binary from the [releases](https://github.com/maaslalani/calendar/releases).
