@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/charmbracelet/fang"
-	"github.com/maaslalani/cal/internal/calendar"
+	"github.com/maaslalani/calendar/internal/calendar"
 	"github.com/spf13/cobra"
 )
 

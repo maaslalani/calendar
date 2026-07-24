@@ -1,4 +1,4 @@
-module github.com/maaslalani/cal
+module github.com/maaslalani/calendar
 
 go 1.25.7
 
