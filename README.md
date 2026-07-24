@@ -7,25 +7,25 @@ Calendar in the terminal.
 ### Usage
 
 ```bash
-cal
+calendar
 ```
 
 View a day's events (styled in a terminal, plain when piped; force either
 with `--color always` / `--color never`):
 
 ```bash
-cal view [today]
-cal view tomorrow
-cal view yesterday
-cal view 2026-08-01
+calendar view [today]
+calendar view tomorrow
+calendar view yesterday
+calendar view 2026-08-01
 ```
 
 Add an event:
 
 ```bash
-cal add "Lunch with Will" --time 12:30 --duration 45m
-cal add Standup --date tomorrow --time 9:15 --duration 15m
-cal add Launch --date 2026-08-01 --all-day
+calendar add "Lunch with Will" --time 12:30 --duration 45m
+calendar add Standup --date tomorrow --time 9:15 --duration 15m
+calendar add Launch --date 2026-08-01 --all-day
 ```
 
 > [!NOTE]
