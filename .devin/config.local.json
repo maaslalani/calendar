@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Exec(find)",
+      "Exec(go build)",
+      "Exec(git status)"
+    ]
+  }
+}

@@ -119,6 +119,14 @@ func eventOverlapsDay(event ical.Event, dayStart, dayEnd time.Time) bool {
 	return event.StartDate.Before(dayEnd) && event.EndDate.After(dayStart)
 }
 
+// selectionEventID marks the provisional "New event" injected while dragging
+// or while the create dialog is open.
+const selectionEventID = "cal:selection"
+
+func isSelectionEvent(event ical.Event) bool {
+	return event.ID == selectionEventID
+}
+
 // withSelection adds a provisional event without mutating the loaded data.
 func (d calendarData) withSelection(day time.Time, startSlot, endSlot int) calendarData {
 	if startSlot < 0 || endSlot < startSlot {
@@ -127,6 +135,7 @@ func (d calendarData) withSelection(day time.Time, startSlot, endSlot int) calen
 
 	dayStart := beginningOfDay(day)
 	selection := ical.Event{
+		ID:        selectionEventID,
 		Title:     "New event",
 		StartDate: dayStart.Add(time.Duration(startSlot) * slotDuration),
 		EndDate:   dayStart.Add(time.Duration(endSlot+1) * slotDuration),

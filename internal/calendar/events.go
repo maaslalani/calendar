@@ -472,13 +472,34 @@ func assignTimedEventClusters(blocks []timedEventBlock) {
 }
 
 func assignTimedEventLayers(blocks []timedEventBlock) {
+	for start := 0; start < len(blocks); {
+		end := start + 1
+		for end < len(blocks) && blocks[end].cluster == blocks[start].cluster {
+			end++
+		}
+		assignClusterLayers(blocks[start:end])
+		start = end
+	}
+}
+
+// assignClusterLayers packs a cluster's blocks into columns, reserving the
+// leftmost column for the provisional selection so a new event always renders
+// on the left side.
+func assignClusterLayers(blocks []timedEventBlock) {
 	layerEnds := make([]int, 0, len(blocks))
-	currentCluster := -1
+	selection := -1
+	for i := range blocks {
+		if isSelectionEvent(blocks[i].event) {
+			selection = i
+			blocks[i].layer = 0
+			layerEnds = append(layerEnds, blocks[i].endSlot)
+			break
+		}
+	}
 
 	for i := range blocks {
-		if blocks[i].cluster != currentCluster {
-			layerEnds = layerEnds[:0]
-			currentCluster = blocks[i].cluster
+		if i == selection {
+			continue
 		}
 
 		layer := len(layerEnds)
